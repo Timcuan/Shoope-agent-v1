@@ -30,6 +30,8 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - Telegram UX scope: Telegram must work as a proper control room with concise menus, action cards, inline approvals, health monitoring, exports, and safe operator workflows.
 - Engine quality scope: the system must include audit, tuning, backtesting, simulation, and safety gates. The goal is production-grade reliability, not unbounded autonomy.
 - Operator replacement scope: the bot should cover the routine Seller Center checks that force operators to open Shopee repeatedly, while keeping high-risk changes supervised from Telegram.
+- Telegram scalability scope: the bot must stay usable as features grow, using role-aware routing, pagination, deduped alerts, digesting, search, and task state instead of dumping every event into chat.
+- Database correctness scope: database design must minimize missed, duplicated, stale, or unreconciled records through constraints, idempotency keys, indexes, watermarks, audits, and repair workflows.
 
 ## Shopee API Capability Map
 
@@ -550,6 +552,11 @@ Core tables:
 | `promotion_state` | Voucher, discount, bundle, add-on, top-pick, and follow-prize snapshots where permission allows. |
 | `listing_health` | Product listing gaps, stale facts, price anomalies, stock sync issues, and missing attributes. |
 | `customer_memory` | Buyer context, unresolved promises, sentiment trajectory, and operator notes. |
+| `reconciliation_runs` | Sync run metadata, source watermarks, drift counts, repair actions, and status. |
+| `data_quality_checks` | Check definitions, latest result, severity, affected rows, and repair hints. |
+| `entity_versions` | Latest version/hash per order, product, shipment, settlement, conversation, and return case. |
+| `outbox` | Durable external side-effect requests before Shopee, Telegram, file, or print execution. |
+| `inbox_offsets` | Last processed webhook/polling/chat/update offsets and cursors by source. |
 | `tokens` | Token state, expiry, refresh status, and shop binding. |
 | `sync_state` | Polling cursors, last successful sync, and drift markers. |
 | `operator_audit` | Telegram approvals, overrides, and manual commands. |
@@ -728,6 +735,55 @@ View-specific menus:
 - Inbox: `P0`, `P1`, `P2`, `Waiting`, `Snoozed`, `Resolved Today`.
 - Reports: `Daily`, `Weekly`, `Monthly`, `Custom Range`.
 
+### Telegram Scalability Rules
+
+As the feature set grows, Telegram must not become noisy or hard to navigate.
+
+Rules:
+
+- Use menus for discovery, search for direct access, and inbox queues for work.
+- Paginate every list over 10 items.
+- Collapse repeated alerts into one task with count, latest timestamp, and affected subjects.
+- Route P0/P1 immediately; digest P2/P3 unless the operator opens the related queue.
+- Use stable task ids so every message card maps to one record in `operator_tasks`.
+- Edit existing Telegram messages for state changes when possible instead of sending new messages for every update.
+- Expire stale buttons and replace them with `Refresh` or `Open latest task`.
+- Provide `Details`, `Evidence`, `History`, and `Export` buttons instead of placing long raw payloads in chat.
+- Keep every action reversible or auditable. If not reversible, require confirmation.
+- Keep long-running exports and batch jobs asynchronous. Telegram should acknowledge the request, then send completion or failure later.
+
+List UX:
+
+```text
+Inbox P1 (page 1/3)
+1. Label missing - order 250501ABC - due 38m
+2. Chat approval - buyer sensitive - due 12m
+3. Finance mismatch - order 250501XYZ
+
+[Open 1] [Open 2] [Open 3]
+[Next] [Filter] [Export]
+```
+
+Search UX:
+
+```text
+/find black l
+Products: 3
+Orders: 5
+Chats: 2
+Tasks: 1
+
+[Product ABC-BLACK-L] [Orders] [Chats] [Tasks]
+```
+
+Telegram throughput guardrails:
+
+- configurable max immediate alerts per minute.
+- configurable max digest size.
+- per-role notification preferences.
+- task ownership and assignment to avoid two operators handling the same case blindly.
+- command cooldowns for expensive exports or broad searches.
+
 ### Telegram Card Patterns
 
 Order card:
@@ -883,6 +939,25 @@ The bot should support:
 
 `/alerts` should show open alerts grouped by severity, with buttons to acknowledge, snooze, resolve, or export evidence.
 
+### Telegram Feature Load Testing
+
+The bot must be tested with realistic busy-day simulations:
+
+- hundreds of order events.
+- dozens of chat approvals.
+- mixed label, finance, stock, and sync exceptions.
+- repeated duplicate alerts.
+- large export requests.
+- multiple operators pressing buttons.
+
+Pass criteria:
+
+- no duplicate side effects.
+- no unreadable message flood.
+- callback acknowledgement stays within target.
+- inbox remains navigable through pagination and filters.
+- task state is correct after concurrent operator actions.
+
 ### Telegram Report UX
 
 `/reports` should open a menu:
@@ -929,6 +1004,139 @@ Reliability requirements:
 - fall back to templates or escalation when LLM calls fail.
 
 Webhook processing must be fast. Long-running work should move to internal queued execution, even if the first implementation uses a database-backed work queue inside the monolith.
+
+## Database Correctness, Audit, and Tuning
+
+The database is the system of record for local automation. The main risk is not only downtime; it is missing, duplicated, stale, or partially reconciled data that makes the bot act on the wrong state. The schema and jobs must make those failures visible and repairable.
+
+### Write Model
+
+Use an append-first model for external facts and a derived snapshot model for current operational state:
+
+- `events` stores raw and normalized incoming facts.
+- domain tables store current snapshots.
+- `entity_versions` stores hashes and source timestamps for change detection.
+- `outbox` stores side effects before execution.
+- `operator_audit` stores human decisions.
+- `reconciliation_runs` proves sync coverage.
+
+All provider-originated records must include:
+
+- `shop_id`.
+- source system.
+- source id.
+- source updated timestamp if available.
+- local received timestamp.
+- correlation id.
+- payload checksum or normalized hash.
+- sync run id or event id.
+
+### Constraints and Idempotency
+
+Required uniqueness constraints:
+
+- `events(source, shop_id, source_event_id, event_type)`.
+- `orders(shop_id, order_sn)`.
+- `order_items(shop_id, order_sn, item_id, model_id)`.
+- `shipments(shop_id, order_sn, package_number)`.
+- `shipping_documents(shop_id, order_sn, package_number, document_type)`.
+- `finance_ledger(shop_id, order_sn, ledger_type, source_version)`.
+- `products(shop_id, item_id)`.
+- `product_variants(shop_id, item_id, model_id)`.
+- `chat_messages(shop_id, conversation_id, message_id)`.
+- `returns_disputes(shop_id, return_sn)`.
+- `action_requests(idempotency_key)`.
+- `outbox(idempotency_key)`.
+- `telegram_callbacks(callback_id)`.
+
+Every external side effect must be driven by `outbox` and marked with an idempotency key before the action executes. If the process crashes after sending but before recording success, recovery must check provider state before retrying.
+
+### Indexing Plan
+
+Minimum indexes:
+
+- order lookup: `(shop_id, order_sn)`, `(shop_id, order_status, update_time)`, `(shop_id, create_time)`.
+- logistics: `(shop_id, document_status, generated_at)`, `(shop_id, tracking_number)`.
+- work queue: `(status, priority, lease_until)`, `(event_id)`, `(idempotency_key)`.
+- tasks: `(status, severity, due_at)`, `(category, status)`, `(subject_id)`.
+- chat: `(shop_id, conversation_id, created_at)`, `(risk_tier, conversation_mode)`.
+- product: `(shop_id, item_id)`, `(sku)`, `(knowledge_freshness_status)`.
+- finance: `(shop_id, settlement_date)`, `(shop_id, order_sn)`, `(anomaly_flag)`.
+- reconciliation: `(source, status, started_at)`.
+
+SQLite WAL is acceptable for the first deployment if write transactions remain short and report generation reads from snapshots. If lock contention, queue latency, or report load becomes visible, migrate to PostgreSQL.
+
+### Reconciliation and No-Miss Audits
+
+Run reconciliation as a first-class workflow, not a background afterthought.
+
+Daily checks:
+
+- orders in Shopee but missing locally.
+- local orders absent from latest Shopee window.
+- order status drift.
+- shipment status drift.
+- missing shipping document for eligible orders.
+- missing tracking number after label generation.
+- finance ledger missing for completed orders.
+- settlement mismatch over threshold.
+- stale product stock or price.
+- product knowledge gaps blocking customer replies.
+- chat message gaps if Chat API is available.
+- Telegram callback without completed action or expiry.
+- outbox records stuck in pending/running state.
+- work queue leases expired without recovery.
+
+Each check writes to `data_quality_checks` and creates or updates `operator_tasks` for actionable issues.
+
+Watermark rules:
+
+- store per-source cursors in `inbox_offsets`.
+- store polling windows and result counts in `reconciliation_runs`.
+- use overlapping polling windows to avoid missing delayed provider updates.
+- dedupe overlap by source id and checksum.
+- never advance a cursor until fetched data is written and committed.
+
+### Database Health Tuning
+
+Operational settings for SQLite phase:
+
+- WAL mode enabled.
+- foreign keys enabled.
+- busy timeout configured.
+- short write transactions.
+- separate report snapshot reads from hot write paths.
+- scheduled `PRAGMA integrity_check`.
+- scheduled `ANALYZE`.
+- controlled `VACUUM` only during maintenance windows.
+- backup through SQLite online backup or safe snapshot, not raw copy during active writes unless using a proven method.
+
+Database health metrics:
+
+- write latency.
+- read latency for key queries.
+- queue lease recovery count.
+- SQLite busy/locked count.
+- WAL size.
+- database size.
+- slow query samples.
+- index usage review.
+- reconciliation drift count.
+- data quality check failure count.
+
+### Repair Workflows
+
+Repair paths:
+
+- replay event by id.
+- replay reconciliation window.
+- rebuild domain snapshot from event log.
+- refetch one order/product/return/conversation.
+- regenerate shipping document metadata from archive.
+- rebuild Excel export from saved source watermark.
+- mark issue as manually resolved with operator audit.
+
+Every repair must produce an audit record with before/after counts and affected ids.
 
 ## Engine Design and Tuning
 
@@ -1100,6 +1308,14 @@ Minimum metrics:
 - product listing hygiene gap count.
 - promotion margin warning count.
 - account health warning count.
+- data quality check failure count.
+- reconciliation drift count by domain.
+- inbox cursor lag by source.
+- outbox stuck count.
+- expired queue lease recovery count.
+- SQLite busy/locked count.
+- slow query count.
+- backup success/failure and restore test age.
 - Telegram callback acknowledgement latency.
 - queue backlog and age by worker pool.
 - report generation duration.
@@ -1117,6 +1333,9 @@ Telegram commands:
 - `/products gaps`: show product knowledge and listing hygiene gaps.
 - `/promos`: show active promos, ending promos, and margin warnings when data is available.
 - `/customers sensitive`: show conversations/customers in sensitive or human-only mode.
+- `/db health`: show database size, WAL size, lock count, slow queries, backup status, and integrity check status.
+- `/sync audit`: show reconciliation coverage, drift count, cursor lag, and latest repair actions.
+- `/repair <subject>`: owner-only guided repair for refetch/replay/rebuild actions.
 - `/summary today`: orders, labels, chat automation, escalations, finance anomalies.
 - `/export orders today`: create and send an order workbook.
 - `/export finance month`: create and send a finance workbook.
@@ -1161,6 +1380,14 @@ Required tests:
 - product listing hygiene tests.
 - promotion margin warning tests.
 - `/find` lookup tests across order, SKU, product alias, customer, and task.
+- database uniqueness and foreign key tests.
+- outbox idempotency recovery tests.
+- reconciliation watermark tests.
+- overlapping polling dedupe tests.
+- data quality check tests.
+- backup and restore smoke tests.
+- SQLite WAL/integrity check verification.
+- key query index plan tests.
 - product knowledge freshness and fallback tests.
 - customer dynamics state transition tests.
 - Telegram menu and callback idempotency tests.
@@ -1184,6 +1411,11 @@ Simulator scenarios:
 - product listing missing weight or stale stock.
 - promo margin below threshold.
 - account health penalty alert.
+- missed webhook repaired by overlapping polling.
+- duplicate provider update deduped by checksum.
+- outbox crash after provider send.
+- stale cursor blocked from advancing.
+- database backup and restore smoke scenario.
 - duplicate webhook.
 - out-of-order order status update.
 - missed webhook repaired by polling.
@@ -1210,6 +1442,7 @@ Simulator scenarios:
 - Telegram bot with health, alerts, and approvals.
 - Telegram menu, action card, callback idempotency, roles, and alert severity.
 - Database-backed work queue with leases, priorities, and retry handling.
+- Database correctness layer with constraints, outbox, inbox offsets, reconciliation runs, and data quality checks.
 - Order, logistics, and finance skeleton agents.
 - Operations Supervisor Agent with agenda, inbox, SLA watch, and `/find` lookup in simulator mode.
 - Reporting Agent with daily summary and Excel writer.
@@ -1234,6 +1467,7 @@ Simulator scenarios:
 - First production Excel reports from real order, item, finance, and inventory data.
 - First production Shopee monthly audit workbook from real order and settlement data.
 - Reconciliation jobs.
+- `/db health`, `/sync audit`, and owner-only repair commands.
 - Dead-letter replay.
 - Daily Telegram summaries.
 - Production audit jobs for safety, data freshness, and queue health.
@@ -1265,6 +1499,7 @@ Simulator scenarios:
 - Risk threshold tuning.
 - Migration path to PostgreSQL if volume requires it.
 - Performance optimization based on real queue, API, report, and operator latency data.
+- PostgreSQL migration readiness review if SQLite contention or report load exceeds thresholds.
 
 ## Out of Scope for Initial Build
 
@@ -1289,6 +1524,8 @@ Simulator scenarios:
 - The `auditshopeedef.xlsx` report shape should be treated as a versioned business template. Do not hardcode column positions without a template schema and validation test.
 - Direct printing should be an optional adapter. The core system must first produce archived, print-ready documents reliably.
 - Seller Center replacement should prioritize visibility and supervised actions first. Do not add autonomous write actions until the read/alert/approval loop is reliable.
+- No cursor, watermark, or offset should advance until its source data and derived state are committed or safely queued for processing.
+- Database tuning must be evidence-driven from lock counts, query latency, drift counts, and backup/restore tests.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
 
@@ -1311,6 +1548,8 @@ The design is ready for implementation planning when:
 - Telegram provides an agenda, exception inbox, and cross-entity search so routine Seller Center checks are centralized.
 - every automation has audit/version records, quality gates, and a pause or fallback path.
 - queue workers can recover leased work without duplicate external side effects.
+- database constraints and reconciliation jobs catch duplicate, missing, stale, and drifted records.
+- backup and restore smoke tests pass before production operation.
 - simulator can replay core workflows without Shopee credentials.
 - real Shopee integration can be added behind gateway interfaces.
 - tests cover idempotency, policy decisions, replay, and provider failure paths.
