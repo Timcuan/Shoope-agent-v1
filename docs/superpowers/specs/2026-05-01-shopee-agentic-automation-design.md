@@ -155,6 +155,91 @@ The initial runtime should use:
 
 The design should keep Shopee, LLM, Telegram, and database access behind interfaces. Business agents must not call provider SDKs directly.
 
+## Tech Stack Audit and Decisions
+
+The stack must be boring, inspectable, and production-capable on a VPS. Do not add agent frameworks, vector databases, queues, dashboards, or browser automation unless a real requirement and proof exist. A feature is not accepted because it sounds agentic; it is accepted only when it maps to real Shopee APIs, Telegram controls, local data, or operator-approved manual inputs.
+
+### Approved Phase-One Stack
+
+| Layer | Choice | Why it is real |
+| --- | --- | --- |
+| Language | Python 3.12 | Mature async ecosystem, strong Excel/database tooling, compatible with aiogram's Python 3.10+ requirement. |
+| API ingress | FastAPI | Straightforward ASGI app for Shopee webhooks, health checks, and internal admin endpoints. |
+| ASGI server | Uvicorn | Direct ASGI runtime for FastAPI. Production deployment should run under systemd or a process manager. |
+| Telegram bot | aiogram 3.x | Async Telegram framework with routers, middleware, callback handling, FSM support, and current Bot API coverage. |
+| HTTP client | httpx | Async HTTP client for signed Shopee calls, timeouts, retries, connection limits, and testable transports. |
+| Data validation | Pydantic v2 + pydantic-settings | Typed config, payload validation, structured agent decisions, and environment-based settings. |
+| Database | SQLite WAL first, PostgreSQL-ready schema | Realistic for one shop on one VPS if writes are short and audited. Schema must remain portable. |
+| Database access | SQLAlchemy 2.x Core/ORM | Explicit transactions, constraints, portable SQL, and migration path to PostgreSQL. |
+| Migrations | Alembic | Versioned schema changes and SQLite batch migrations where needed. |
+| Scheduler | APScheduler or small DB-backed scheduler wrapper | Scheduled reconciliation, token refresh, audits, and reports. Jobs must persist in DB or be recoverable from config. |
+| Queue/outbox | DB-backed queue tables | Avoids Redis/Celery complexity in phase one while preserving idempotency, leases, retries, and auditability. |
+| Excel | openpyxl | Direct support for `.xlsx`, formulas, styles, merged cells, widths, and preserving the audit workbook template. |
+| PDF/document archive | Generated files on local filesystem with DB metadata | Enough for labels, AWB/resi, bundles, and evidence on a VPS. Object storage can be added later. |
+| Testing | pytest | Fixture-driven simulator, gateway fakes, policy matrix tests, replay tests, and failure injection. |
+| Logging | Python structured logging to JSON lines | Inspectable logs without adding an observability stack too early. |
+| Deployment | Docker Compose or systemd | Both are real on a VPS. Choose one during implementation; do not support both equally unless needed. |
+
+### Process Topology
+
+Use one codebase with explicit process roles:
+
+```text
+api       -> FastAPI webhook/health endpoints
+telegram  -> Telegram polling or webhook handler
+worker    -> outbox/work queue execution
+scheduler -> reconciliation, token refresh, audits, summaries
+```
+
+For SQLite phase, prefer one writer path through the queue/outbox. If multiple processes write, keep transactions short, enable WAL and busy timeout, and monitor lock counts. If lock contention appears, migrate to PostgreSQL instead of adding hacks.
+
+### Deferred Until Proven Necessary
+
+| Technology | Deferred reason |
+| --- | --- |
+| Redis | Not needed until DB-backed queue latency or concurrency becomes a measured bottleneck. |
+| Celery/RQ | Too much operational surface for phase one; add only if DB queue cannot keep up. |
+| PostgreSQL | Planned migration target, not default, unless volume/concurrency requires it immediately. |
+| S3/object storage | Local archive is enough initially; add object storage when backup/retention needs demand it. |
+| Prometheus/Grafana | Structured logs and Telegram health are enough initially; add when metrics need dashboards or alert routing beyond Telegram. |
+| Dedicated vector DB | Product knowledge should start as relational + full-text/alias tables. Add embeddings only after real retrieval misses justify it. |
+| Embeddings/RAG | Useful later for large FAQ/product knowledge. Not required for exact product facts, stock, policies, or audit reports. |
+| LangChain/LlamaIndex/AutoGen/CrewAI | Avoid in phase one. The system needs deterministic pipelines, not opaque agent orchestration. |
+| Browser automation | Rejected for normal operations. Use official APIs or supervised manual workflow, not Shopee UI scraping. |
+| Kubernetes | Not appropriate for one VPS and one shop. |
+| Web dashboard | Explicitly out of scope because Telegram is the operator UI. |
+
+### Rejected as Gimmick or Unsafe
+
+- Autonomous “AI agent crew” frameworks controlling shop operations without typed contracts.
+- Unofficial Shopee private APIs or Seller Center scraping.
+- LLM-generated finance numbers that are not tied to API fields or formulas.
+- LLM-generated product claims that are not tied to approved product knowledge.
+- Auto-changing price, promo, refund, cancellation, dispute, or compensation rules from model output.
+- Direct physical printing as a core requirement before the VPS/printer environment is configured.
+- Vector search as the source of truth for stock, price, settlement, policy, or order state.
+
+### Realness Gate for Every Feature
+
+Every feature must declare:
+
+```text
+feature_id
+source_of_truth: shopee_api | local_db | operator_input | generated_file | simulator
+required_permissions
+read_path
+write_path
+fallback_path
+data_tables
+telegram_controls
+tests
+failure_mode
+rollout_flag
+owner
+```
+
+If `source_of_truth` is unknown, the feature stays in design/simulator only. If `write_path` is not official API or explicit operator action, the feature is rejected.
+
 ## Core Modules
 
 ### Ingress
@@ -645,6 +730,8 @@ Core tables:
 | `incidents` | Production incidents, severity, timeline, root cause, affected actions, and follow-up tasks. |
 | `runbook_executions` | Operator-triggered runbooks, parameters, steps, results, and audit trail. |
 | `slo_windows` | SLO/error-budget measurements for ingestion, Telegram callbacks, sync, reports, labels, and chat decisions. |
+| `feature_registry` | Realness-gate records for each feature, source of truth, permissions, fallback, tests, owner, and rollout flag. |
+| `dependency_inventory` | Approved runtime dependencies, version pins, rationale, license, and replacement/removal notes. |
 | `tokens` | Token state, expiry, refresh status, and shop binding. |
 | `sync_state` | Polling cursors, last successful sync, and drift markers. |
 | `operator_audit` | Telegram approvals, overrides, and manual commands. |
@@ -1712,6 +1799,11 @@ Required tests:
 - incident runbook execution tests.
 - privacy redaction tests.
 - SLO/error budget tests.
+- feature realness gate tests.
+- dependency inventory policy tests.
+- no-unapproved-dependency test.
+- no-unofficial-shopee-api usage test.
+- no-browser-scraping workflow test.
 - database uniqueness and foreign key tests.
 - outbox idempotency recovery tests.
 - reconciliation watermark tests.
@@ -1752,6 +1844,9 @@ Simulator scenarios:
 - Telegram card redacts buyer PII.
 - P0 incident runbook execution.
 - SLO burn pauses affected automation.
+- feature without source of truth remains simulator-only.
+- unapproved dependency fails dependency inventory check.
+- attempted unofficial Shopee endpoint is blocked.
 - missed webhook repaired by overlapping polling.
 - duplicate provider update deduped by checksum.
 - outbox crash after provider send.
@@ -1785,6 +1880,7 @@ Simulator scenarios:
 - Database-backed work queue with leases, priorities, and retry handling.
 - Database correctness layer with constraints, outbox, inbox offsets, reconciliation runs, and data quality checks.
 - Feature flags, capability discovery, config versions, incidents, and runbook tables.
+- Feature registry and dependency inventory.
 - Order, logistics, and finance skeleton agents.
 - Operations Supervisor Agent with agenda, inbox, SLA watch, and `/find` lookup in simulator mode.
 - Memory and Learning Agent with candidate memory, approval workflow, and version tables.
@@ -1858,6 +1954,7 @@ Simulator scenarios:
 - Autonomous promo creation, deletion, or price changes before policy and margin gates are proven.
 - Review/rating automation unless an official API/export/manual import source is available.
 - Any workflow entering `full_auto` before it reaches the required readiness level and has rollback history.
+- New dependencies, agent frameworks, vector databases, Redis/Celery, or browser automation unless the feature's realness gate proves they are necessary.
 - Hardcoded Shopee fee formulas as authoritative finance logic.
 - Multi-shop scale-out architecture.
 - Autonomous response to high-risk customer messages.
@@ -1878,6 +1975,8 @@ Simulator scenarios:
 - Memory is not truth unless it is source-attributed and approved for the intended use. Candidate memory must not drive autonomous customer-facing actions.
 - Self-learning must improve proposals and retrieval. It must not silently change high-risk behavior.
 - Feature flags and capability discovery are mandatory for production. Do not enable Shopee write actions based on design assumptions alone.
+- Every dependency must have an owner, rationale, version pin, and removal/replacement rule. Unused dependencies should be deleted.
+- Every feature must pass the realness gate before implementation. If it cannot name a source of truth and official write path, it is a simulator-only idea.
 - Privacy redaction must be verified before Telegram cards include customer/order details.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
@@ -1906,6 +2005,7 @@ The design is ready for implementation planning when:
 - learning proposals are evaluated and approved before changing production behavior.
 - capability discovery is stored and visible through Telegram before production API workflows are enabled.
 - feature flags can roll back any automation lane without code changes.
+- every implemented feature has a real source of truth, approved dependency path, tests, fallback, and rollout flag.
 - privacy redaction, incident runbooks, and SLO/error-budget monitoring are implemented.
 - backup and restore smoke tests pass before production operation.
 - simulator can replay core workflows without Shopee credentials.
