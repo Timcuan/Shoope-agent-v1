@@ -31,12 +31,12 @@ class EventRepository:
             correlation_id=event.correlation_id,
             payload_json=json.dumps(event.payload, sort_keys=True),
         )
-        self.session.add(record)
         try:
-            self.session.commit()
+            with self.session.begin_nested():
+                self.session.add(record)
+                self.session.flush()
             return InsertEventResult(event_id=event.event_id, created=True)
         except IntegrityError:
-            self.session.rollback()
             existing = self.session.scalar(
                 select(EventRecord).where(
                     EventRecord.source == event.source.value,
