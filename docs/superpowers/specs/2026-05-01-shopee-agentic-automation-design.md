@@ -22,6 +22,32 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - Database path: portable design, start with SQLite WAL, migrate to PostgreSQL when needed.
 - LLM path: provider-agnostic adapter.
 - Logistics scope: auto-generate shipping documents for eligible orders; do not auto-ship full workflows in phase one.
+- Reporting scope: automatic Excel output for daily, weekly, monthly, order, finance, inventory, chat, and escalation recaps.
+- Product intelligence scope: the agent must know product catalog details, variants, stock, pricing, policies, FAQ, product constraints, and approved selling points before it interacts with customers.
+- Customer dynamics scope: the agent must model conversation state, customer mood, urgency, risk, purchase context, and escalation triggers.
+
+## Shopee API Capability Map
+
+Shopee Open Platform should be used for seller operations only. The official API is suitable for the shop's own orders, products, logistics, finance/payment-related records, returns, shop/account data, push events, and eligible chat workflows. It is not a reliable source for competitor intelligence or marketplace-wide analytics.
+
+The implementation should maximize these use cases:
+
+| API area | What the bot can do | Automation use case |
+| --- | --- | --- |
+| Authorization and Public APIs | Generate authorization links, receive authorization codes, store shop ids, refresh access tokens. | Keep the integration alive and alert the operator before auth failure blocks operations. |
+| Shop APIs | Read shop identity, profile, settings, and operational metadata. | Bind events to the right shop and enrich Telegram summaries. |
+| Order APIs | Pull order list, order detail, invoice/order metadata, remarks, cancellation-related data where permission allows. | Detect new orders, update status, build packing context, reconcile missed webhook events, and feed finance reports. |
+| Logistics APIs | Read logistics channels, shipping parameters, tracking information, and generate shipping documents where available. | Auto-generate shipping documents for eligible orders, detect shipping blockers, and notify operators. |
+| Product APIs | Read and update product data, categories, attributes, brands, price, stock, variants, and product metadata where permission allows. | Build product knowledge, answer product questions safely, detect low stock, and prevent wrong variant promises. |
+| Returns and Refund APIs | Read return/refund requests and details; perform sensitive actions only after approval. | Triage cases, summarize evidence, recommend action, and route high-risk cases to Telegram. |
+| Payment/Finance APIs | Read order income, payout, wallet, escrow, and settlement-related records where permission allows. | Build ledger, settlement recap, margin estimates, anomaly alerts, and Excel finance reports. |
+| Push Mechanism | Receive configured platform notifications. | Trigger event-driven order, logistics, chat, return, and sync workflows. |
+| Chat APIs | If the app is whitelisted and policy permits, read chat context and send messages. | Auto-send low-risk replies, draft/approve medium-risk replies, and freeze high-risk conversations. |
+| Account Health APIs | Read performance, penalty, or account health signals where available. | Alert late shipment risk, operational penalty risk, and service quality issues. |
+| Media APIs | Upload supported images or files where needed. | Support product/chat evidence workflows and shipping/return evidence if allowed. |
+| Promotion APIs | Read or manage vouchers, discounts, bundle deals, add-on deals, top picks, and follow prizes where permission allows. | Let the agent answer promo questions from real promo state and recommend safe promo references. |
+
+Every capability must be gated by app permission, region, seller account type, rate limits, and Shopee policy. If an API is unavailable, the system falls back to simulator, manual import, or Telegram approval flows.
 
 ## Recommended Architecture
 
@@ -47,6 +73,8 @@ Event Router
         +--> Logistics Agent
         +--> Finance Agent
         +--> Inventory Agent
+        +--> Reporting Agent
+        +--> Product Knowledge Agent
         +--> Chat Agent
         +--> Return/Dispute Agent
         +--> Sync/Recovery Agent
@@ -72,6 +100,7 @@ The initial runtime should use:
 - Telegram bot as the control plane.
 - Scheduler for reconciliation, token refresh, daily summaries, and retry processing.
 - Local archive folder for shipping documents, raw payload evidence, and exports.
+- Excel writer for `.xlsx` reports generated from local database snapshots.
 - Docker Compose or systemd. Docker Compose is preferred if dependency isolation matters; systemd is preferred if the VPS should remain minimal.
 
 The design should keep Shopee, LLM, Telegram, and database access behind interfaces. Business agents must not call provider SDKs directly.
@@ -122,6 +151,42 @@ LLM Gateway exposes provider-agnostic structured operations:
 
 The first implementation can use Gemini, OpenAI, or another provider through the same interface. The rest of the system must not depend on a provider-specific SDK or prompt format.
 
+### Reporting and Excel Writer
+
+Reporting converts local operational data into clear recaps. It must write `.xlsx` files automatically and attach or link them through Telegram when requested or scheduled.
+
+Reports should come from local database snapshots, not live scattered API calls. This keeps reports reproducible and prevents partial exports when Shopee API calls fail.
+
+Initial report types:
+
+- daily operations recap.
+- daily finance recap.
+- weekly sales and settlement recap.
+- monthly P&L-ready export.
+- order fulfillment backlog.
+- inventory and low-stock recap.
+- chat automation recap.
+- escalation and operator workload recap.
+- finance anomaly report.
+- product knowledge freshness report.
+
+Excel files should include multiple sheets when useful, such as `summary`, `orders`, `items`, `finance`, `inventory`, `chats`, `escalations`, and `anomalies`. Each generated file must be recorded in an `exports` table with report type, time range, file path, checksum, creator, and source query version.
+
+### Product Knowledge Base
+
+Product Knowledge Base is the factual layer used by Chat Agent, Inventory Agent, Reporting Agent, and Telegram summaries. It combines Shopee product data with local seller knowledge.
+
+It should store:
+
+- Shopee item id, model id, SKU, name, brand, category, attributes, variation options, and images.
+- price, promo price, stock, reserved stock, sold count if available, and sync timestamp.
+- weight, dimensions, shipping constraints, fragile flags, bundle rules, and compatibility notes.
+- approved selling points, forbidden claims, product limitations, warranty policy, return policy, and care instructions.
+- aliases and customer-language synonyms for each product and variant.
+- FAQ entries tied to products, variants, and policies.
+
+The agent must answer product questions from this knowledge base. If the product, variant, stock, or policy is stale or missing, it must ask a clarifying question or escalate instead of guessing.
+
 ## Specialist Agents
 
 ### Order Agent
@@ -146,6 +211,12 @@ It must not hardcode seller fee formulas as final truth. API-provided values are
 
 Inventory Agent maintains product and stock cache, reserved stock, released stock, sold stock, and low-stock alerts. It avoids reading live product APIs on every chat or order path unless a refresh is explicitly needed.
 
+### Product Knowledge Agent
+
+Product Knowledge Agent keeps product facts usable for automation. It syncs Shopee product data, normalizes variants, maps SKUs to human names, tracks freshness, builds product aliases, and flags incomplete product knowledge.
+
+It must prevent the Chat Agent from making unsafe product claims. A response about product availability, compatibility, warranty, bundle contents, or shipping constraint is allowed only when the required facts are present and fresh enough.
+
 ### Chat Agent
 
 Chat Agent classifies intent, sentiment, risk, urgency, and confidence. It retrieves relevant order, tracking, product, FAQ, and policy context. It proposes either a template response, LLM-assisted draft, approval request, or escalation.
@@ -156,6 +227,40 @@ Moderate automation rules:
 - Mild complaints may auto-send only when policy allows and context is clear.
 - Medium-risk drafts require Telegram approval.
 - High-risk conversations freeze automation and escalate.
+
+The Chat Agent must understand online customer dynamics. It tracks whether a customer is browsing, comparing, negotiating, anxious about delivery, mildly frustrated, angry, abusive, asking for exception handling, or moving toward dispute/refund. It must detect topic shifts inside one conversation, such as status question to complaint to refund request.
+
+Customer dynamics signals:
+
+- intent and intent shift.
+- sentiment and frustration trend.
+- urgency.
+- buyer stage: pre-sale, paid waiting shipment, shipped, delivered, after-sales.
+- order value and risk.
+- repeated question count.
+- response time sensitivity.
+- refund, cancellation, compensation, or dispute keywords.
+- abusive, threat, legal, or platform escalation signals.
+- mismatch between customer claim and order data.
+
+The agent should use these signals to choose between auto-reply, clarification, approval, escalation, and `human_only` mode.
+
+### Reporting Agent
+
+Reporting Agent builds scheduled and on-demand recaps from local data. It prepares Telegram summaries and `.xlsx` files.
+
+It should support:
+
+- `/summary today`.
+- `/summary week`.
+- `/export orders today`.
+- `/export finance month`.
+- `/export inventory`.
+- `/export chats`.
+- automatic daily close report.
+- automatic weekly management report.
+
+Reports must be clear enough for decision making, not raw data dumps. The first sheet should be an executive summary with totals, deltas, anomalies, and recommended operator actions.
 
 ### Return and Dispute Agent
 
@@ -198,11 +303,14 @@ Core tables:
 | `finance_ledger` | Estimated and final fees, escrow, settlement, and anomaly flags. |
 | `products` | Product, SKU, price, and stock cache. |
 | `stock_movements` | Reserved, released, sold, and manual stock changes. |
+| `product_knowledge` | Local product facts, approved claims, constraints, aliases, and FAQ links. |
+| `product_faqs` | Product-specific question and answer records used for safe replies. |
 | `customers` | Buyer mapping, order history, and risk markers. |
 | `conversations` | Conversation mode, latest intent, temperature, and operator state. |
 | `chat_messages` | Inbound and outbound messages, intent, confidence, reply mode, and audit state. |
 | `returns_disputes` | Case reason, evidence, recommendation, and decision state. |
 | `action_requests` | Pending, approved, rejected, and executed action payloads. |
+| `exports` | Generated report metadata, file paths, checksums, and source query versions. |
 | `tokens` | Token state, expiry, refresh status, and shop binding. |
 | `sync_state` | Polling cursors, last successful sync, and drift markers. |
 | `operator_audit` | Telegram approvals, overrides, and manual commands. |
@@ -215,6 +323,8 @@ Derived fields:
 - `requires_human`.
 - `financial_delta`.
 - `conversation_mode`.
+- `product_knowledge_freshness`.
+- `reporting_period`.
 
 ## Event Processing Flow
 
@@ -273,6 +383,7 @@ Initial policy:
 | Order status question | Auto-send if context is known and confidence is high. |
 | Tracking question | Auto-send if tracking data exists. |
 | Product stock or variation question | Auto-send from product cache if fresh. |
+| Product compatibility, warranty, fragile item, sizing, bundle, or limitation question | Auto-send only from approved product knowledge; otherwise clarify or escalate. |
 | Store policy question | Auto-send from approved FAQ or policy text. |
 | Mild complaint | Auto-send safe template only when no refund, cancel, threat, or dispute signal exists. |
 | Price negotiation | Approval or safe template, depending on configured policy. |
@@ -301,6 +412,7 @@ Supported interactions:
 - medium-risk approval cards.
 - high-risk escalation cards.
 - daily summary.
+- Excel report generation and delivery.
 - health checks.
 - dead-letter and replay commands.
 - pause and resume automation.
@@ -366,6 +478,10 @@ Telegram commands:
 
 - `/health`: service, database, Shopee auth, scheduler, dead-letter count, and last sync.
 - `/summary today`: orders, labels, chat automation, escalations, finance anomalies.
+- `/export orders today`: create and send an order workbook.
+- `/export finance month`: create and send a finance workbook.
+- `/export inventory`: create and send an inventory workbook.
+- `/export chats`: create and send a chat automation workbook.
 - `/pause`: pause autonomous side effects.
 - `/resume`: resume autonomous side effects.
 - `/replay <event_id>`: replay an event when authorized.
@@ -383,6 +499,9 @@ Required tests:
 - action executor dry-run tests.
 - reconciliation drift tests.
 - LLM structured output contract tests with mocked providers.
+- Excel report generation tests.
+- product knowledge freshness and fallback tests.
+- customer dynamics state transition tests.
 - failure injection for duplicate webhook, API timeout, token expiry, database retry, and LLM timeout.
 
 Simulator scenarios:
@@ -393,6 +512,9 @@ Simulator scenarios:
 - out-of-order order status update.
 - missed webhook repaired by polling.
 - mild complaint.
+- customer topic shift from status question to refund request.
+- stale product stock question.
+- product compatibility question with missing knowledge.
 - refund demand.
 - hard complaint.
 - finance settlement mismatch.
@@ -411,6 +533,8 @@ Simulator scenarios:
 - Event router.
 - Telegram bot with health, alerts, and approvals.
 - Order, logistics, and finance skeleton agents.
+- Reporting Agent with daily summary and Excel writer.
+- Product Knowledge Base schema and import/sync skeleton.
 - Shipping document action in dry-run/simulator mode.
 - Test harness and simulator fixtures.
 
@@ -420,6 +544,8 @@ Simulator scenarios:
 - Token refresh persistence.
 - Real order detail and order list sync.
 - Real logistics document generation.
+- Product catalog and variant sync.
+- First production Excel reports from real order, item, finance, and inventory data.
 - Reconciliation jobs.
 - Dead-letter replay.
 - Daily Telegram summaries.
@@ -429,6 +555,8 @@ Simulator scenarios:
 - Chat event ingestion if API access allows it.
 - Chat classifier and policy matrix.
 - FAQ and policy retrieval.
+- Product-aware response retrieval.
+- Customer dynamics state machine.
 - Low-risk auto-send.
 - Medium-risk Telegram approval.
 - Conversation state machine.
@@ -438,6 +566,8 @@ Simulator scenarios:
 
 - Return/dispute triage.
 - Inventory cache and stock movement alerts.
+- Product knowledge quality scoring.
+- Advanced Excel recaps for weekly/monthly operations.
 - Finance anomaly tuning.
 - Operator correction feedback.
 - Risk threshold tuning.
@@ -451,6 +581,7 @@ Simulator scenarios:
 - Hardcoded Shopee fee formulas as authoritative finance logic.
 - Multi-shop scale-out architecture.
 - Autonomous response to high-risk customer messages.
+- Competitor scraping, marketplace-wide analytics, or unofficial Shopee private APIs.
 
 ## Open Implementation Notes
 
@@ -458,6 +589,8 @@ Simulator scenarios:
 - The first database implementation should keep SQL portable and avoid SQLite-specific behavior outside the repository layer.
 - The simulator should remain part of the permanent test suite, not a temporary scaffold.
 - The system should start in conservative mode, then enable specific auto-actions after policy tests and simulator replay pass.
+- Excel exports should be generated from local snapshots and should not block core event processing.
+- Product knowledge must be treated as a safety dependency for customer-facing answers.
 
 ## Acceptance Criteria
 
@@ -467,6 +600,9 @@ The design is ready for implementation planning when:
 - all agent actions pass through Policy Engine and Action Executor.
 - low, medium, and high risk paths are explicit.
 - Telegram can show action reason, evidence, approval buttons, and audit status.
+- Telegram can request and receive Excel recap files.
+- the agent can answer product questions only when product knowledge is present and fresh.
+- the agent can detect customer mood, topic shifts, and escalation risk.
 - simulator can replay core workflows without Shopee credentials.
 - real Shopee integration can be added behind gateway interfaces.
 - tests cover idempotency, policy decisions, replay, and provider failure paths.
