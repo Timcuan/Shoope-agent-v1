@@ -22,6 +22,7 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - Database path: portable design, start with SQLite WAL, migrate to PostgreSQL when needed.
 - LLM path: provider-agnostic adapter.
 - Logistics scope: auto-generate shipping documents for eligible orders; do not auto-ship full workflows in phase one.
+- Shipping document and print scope: generate, download, archive, batch, and print-ready shipping documents, labels, AWB/resi, packing lists, and picklists with audit and operator controls.
 - Reporting scope: automatic Excel output for daily, weekly, monthly, order, finance, inventory, chat, and escalation recaps.
 - Shopee audit workbook scope: the recap engine must understand and fill the uploaded workbook shape from `/Users/aaa/Downloads/auditshopeedef.xlsx` with high precision.
 - Product intelligence scope: the agent must know product catalog details, variants, stock, pricing, policies, FAQ, product constraints, and approved selling points before it interacts with customers.
@@ -49,6 +50,21 @@ The implementation should maximize these use cases:
 | Account Health APIs | Read performance, penalty, or account health signals where available. | Alert late shipment risk, operational penalty risk, and service quality issues. |
 | Media APIs | Upload supported images or files where needed. | Support product/chat evidence workflows and shipping/return evidence if allowed. |
 | Promotion APIs | Read or manage vouchers, discounts, bundle deals, add-on deals, top picks, and follow prizes where permission allows. | Let the agent answer promo questions from real promo state and recommend safe promo references. |
+
+Logistics capability sequence:
+
+```text
+Get channel/address/parameter
+-> Ship/order arrangement if policy allows
+-> Create shipping document task
+-> Poll shipping document result
+-> Download shipping document
+-> Archive document
+-> Send/print/queue document
+-> Track shipment and reconcile status
+```
+
+`ship order`, `batch ship order`, address updates, channel updates, and cancellation-adjacent actions are high-impact logistics actions. They must stay behind policy gates and operator approval until the store's fulfillment rules are proven.
 
 Every capability must be gated by app permission, region, seller account type, rate limits, and Shopee policy. If an API is unavailable, the system falls back to simulator, manual import, or Telegram approval flows.
 
@@ -288,6 +304,65 @@ Logistics Agent handles shipping document readiness and generation. In phase one
 
 Eligibility checks include order status, payment/shipment completeness, SKU validity, absence of custom request flags, and absence of high-risk order markers.
 
+It also owns the print-ready document lifecycle:
+
+- fetch shipping parameters.
+- validate logistics channel and package number.
+- create shipping document task.
+- poll result until ready or failed.
+- download AWB/resi/label document.
+- archive the file with checksum and metadata.
+- create print job or Telegram document delivery.
+- reconcile tracking number and shipment status after document generation.
+
+### Print and Document Agent
+
+Print and Document Agent prepares operational documents for packing and handoff. It works with Logistics Agent but has its own queue so printing/export work never blocks order ingestion.
+
+Document types:
+
+- Shopee shipping label / AWB / resi.
+- packing slip.
+- picklist by batch.
+- batch label bundle.
+- return/dispute evidence bundle.
+- order detail PDF for manual handling.
+
+Print outputs:
+
+- Telegram document attachment.
+- local archive file.
+- print queue record for a configured printer.
+- batch PDF bundle grouped by courier, pickup/dropoff mode, or warehouse area.
+
+The first implementation should generate and deliver print-ready files. Direct OS/printer printing should be optional because VPS printers vary. If direct printing is enabled later, it must be explicitly configured and audited.
+
+Batch print rules:
+
+- group by logistics channel, pickup/dropoff mode, and document type.
+- sort by order received time or SKU location.
+- enforce max batch size.
+- skip orders with missing product knowledge, custom request flags, or unresolved risk.
+- show a Telegram confirmation card before batch actions that change Shopee state.
+- allow document-only batch download without changing Shopee order state.
+
+Document archive metadata:
+
+- `document_id`.
+- `order_sn`.
+- `package_number`.
+- `document_type`.
+- `source_action_id`.
+- `file_path`.
+- `mime_type`.
+- `checksum`.
+- `generated_at`.
+- `printed_at`.
+- `print_status`.
+- `shopee_request_id`.
+- `template_version`.
+- `operator_id` when manually triggered.
+
 ### Finance Agent
 
 Finance Agent creates operational ledger records from order and settlement data. It stores estimated fees, final escrow values, commissions, service fees, shipping fees, and settlement deltas.
@@ -387,6 +462,9 @@ Core tables:
 | `orders` | Local source of operational order state. |
 | `order_items` | Item and variation details for analytics, stock, and customer context. |
 | `shipments` | Logistics channel, tracking number, document status, and label evidence. |
+| `shipping_documents` | AWB/resi/label/packing document metadata, file path, checksum, and readiness status. |
+| `print_jobs` | Print queue records, batch grouping, target printer, attempts, and status. |
+| `packing_batches` | Batch definitions for picklist, labels, packing slips, and courier handoff. |
 | `finance_ledger` | Estimated and final fees, escrow, settlement, and anomaly flags. |
 | `products` | Product, SKU, price, and stock cache. |
 | `stock_movements` | Reserved, released, sold, and manual stock changes. |
@@ -486,6 +564,12 @@ Initial policy:
 | Return or refund request | Escalate. |
 | Hard complaint, threat, abusive tone, legal/platform escalation | Freeze and escalate. |
 | Finance mismatch | Escalate with evidence. |
+| Generate shipping document for eligible order | Auto-generate if logistics data is complete and risk is low. |
+| Download existing shipping document | Auto-download and archive if document is ready. |
+| Print or send label document | Auto-send to Telegram or queue print if configured. |
+| Batch document-only export | Approval optional, based on operator setting. |
+| Ship order or batch ship order | Approval required until fulfillment policy is proven. |
+| Address/channel update | Owner approval required. |
 
 Forbidden LLM behavior:
 
@@ -505,6 +589,8 @@ Supported interactions:
 
 - order alerts.
 - generated shipping document notifications.
+- print-ready resi/AWB/label notifications.
+- batch packing and print controls.
 - medium-risk approval cards.
 - high-risk escalation cards.
 - daily summary.
@@ -870,6 +956,11 @@ Minimum metrics:
 - false or corrected auto-reply count.
 - finance mismatch count.
 - shipping document generation success and failure.
+- shipping document download success and failure.
+- label/print queue backlog.
+- print job success and failure.
+- average time from eligible order to print-ready document.
+- orders skipped from batch print by reason.
 - Telegram callback acknowledgement latency.
 - queue backlog and age by worker pool.
 - report generation duration.
@@ -887,6 +978,10 @@ Telegram commands:
 - `/export chats`: create and send a chat automation workbook.
 - `/export audit month <month>`: create a workbook in the `auditshopeedef.xlsx` monthly audit shape.
 - `/export audit year`: create all month sheets in the Shopee monthly audit shape.
+- `/labels ready`: show ready-to-print shipping documents.
+- `/labels batch`: create a batch label bundle.
+- `/print queue`: show pending, printed, and failed print jobs.
+- `/packing today`: create picklist and packing batch for today's eligible orders.
 - `/pause`: pause autonomous side effects.
 - `/resume`: resume autonomous side effects.
 - `/replay <event_id>`: replay an event when authorized.
@@ -909,6 +1004,11 @@ Required tests:
 - Shopee audit workbook formula and style preservation tests.
 - Shopee audit workbook row overflow tests.
 - report template rate mismatch warning tests.
+- shipping document lifecycle tests.
+- print job idempotency tests.
+- batch label grouping tests.
+- document archive checksum tests.
+- print queue failure and retry tests.
 - product knowledge freshness and fallback tests.
 - customer dynamics state transition tests.
 - Telegram menu and callback idempotency tests.
@@ -922,6 +1022,11 @@ Simulator scenarios:
 
 - new paid order.
 - order ready for shipping document.
+- shipping document task pending then ready.
+- shipping document task failed.
+- batch label generation with mixed couriers.
+- duplicate print request.
+- order skipped from print batch due to custom request.
 - duplicate webhook.
 - out-of-order order status update.
 - missed webhook repaired by polling.
@@ -953,6 +1058,7 @@ Simulator scenarios:
 - Shopee monthly audit workbook template adapter for `auditshopeedef.xlsx`.
 - Product Knowledge Base schema and import/sync skeleton.
 - Shipping document action in dry-run/simulator mode.
+- Print and Document Agent with archive, batch bundle, and Telegram delivery in simulator mode.
 - Test harness and simulator fixtures.
 
 ### Phase 2: Shopee Production Integration
@@ -961,6 +1067,8 @@ Simulator scenarios:
 - Token refresh persistence.
 - Real order detail and order list sync.
 - Real logistics document generation.
+- Real shipping document download and archive.
+- Print-ready label/AWB/resi bundle delivery through Telegram.
 - Product catalog and variant sync.
 - First production Excel reports from real order, item, finance, and inventory data.
 - First production Shopee monthly audit workbook from real order and settlement data.
@@ -998,6 +1106,7 @@ Simulator scenarios:
 
 - Web dashboard.
 - Full auto-ship workflow.
+- Direct physical printer integration before printer target and VPS environment are explicitly configured.
 - Final automated refund, dispute, or compensation decisions.
 - Hardcoded Shopee fee formulas as authoritative finance logic.
 - Multi-shop scale-out architecture.
@@ -1012,6 +1121,7 @@ Simulator scenarios:
 - The system should start in conservative mode, then enable specific auto-actions after policy tests and simulator replay pass.
 - Excel exports should be generated from local snapshots and should not block core event processing.
 - The `auditshopeedef.xlsx` report shape should be treated as a versioned business template. Do not hardcode column positions without a template schema and validation test.
+- Direct printing should be an optional adapter. The core system must first produce archived, print-ready documents reliably.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
 
@@ -1026,6 +1136,8 @@ The design is ready for implementation planning when:
 - Telegram can request and receive Excel recap files.
 - the system can generate a Shopee monthly audit workbook matching `auditshopeedef.xlsx` layout, formulas, and column semantics.
 - report generation flags the observed admin-rate mismatch instead of silently hiding it.
+- the system can generate, download, archive, and deliver print-ready resi/AWB/label documents.
+- print jobs and batch labels are idempotent, auditable, and recoverable.
 - the agent can answer product questions only when product knowledge is present and fresh.
 - the agent can detect customer mood, topic shifts, and escalation risk.
 - Telegram control flows are usable through menus and inline action cards.
