@@ -33,6 +33,7 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - Telegram scalability scope: the bot must stay usable as features grow, using role-aware routing, pagination, deduped alerts, digesting, search, and task state instead of dumping every event into chat.
 - Database correctness scope: database design must minimize missed, duplicated, stale, or unreconciled records through constraints, idempotency keys, indexes, watermarks, audits, and repair workflows.
 - Memory and learning scope: the agent must retain operational context, product knowledge, customer state, policies, and operator corrections through versioned memory and supervised learning loops.
+- Production hardening scope: every risky capability must be behind feature flags, capability discovery, runbooks, SLOs, incident records, and staged rollout gates.
 
 ## Shopee API Capability Map
 
@@ -93,6 +94,8 @@ Get channel/address/parameter
 `ship order`, `batch ship order`, address updates, channel updates, and cancellation-adjacent actions are high-impact logistics actions. They must stay behind policy gates and operator approval until the store's fulfillment rules are proven.
 
 Every capability must be gated by app permission, region, seller account type, rate limits, and Shopee policy. If an API is unavailable, the system falls back to simulator, manual import, or Telegram approval flows.
+
+Capability discovery must run before production activation. The system should store which API modules and actions are actually available for the authorized shop, including read/write capability, last successful call, failure reason, and fallback mode. Telegram should expose this through `/capabilities`.
 
 ## Recommended Architecture
 
@@ -636,6 +639,12 @@ Core tables:
 | `entity_versions` | Latest version/hash per order, product, shipment, settlement, conversation, and return case. |
 | `outbox` | Durable external side-effect requests before Shopee, Telegram, file, or print execution. |
 | `inbox_offsets` | Last processed webhook/polling/chat/update offsets and cursors by source. |
+| `api_capabilities` | Available Shopee API modules/actions, permission state, last success, fallback mode, and region/account constraints. |
+| `feature_flags` | Per-capability rollout state, risk tier, approval requirements, and rollback target. |
+| `config_versions` | Versioned runtime settings, thresholds, rate limits, Telegram routing, and active policy bindings. |
+| `incidents` | Production incidents, severity, timeline, root cause, affected actions, and follow-up tasks. |
+| `runbook_executions` | Operator-triggered runbooks, parameters, steps, results, and audit trail. |
+| `slo_windows` | SLO/error-budget measurements for ingestion, Telegram callbacks, sync, reports, labels, and chat decisions. |
 | `tokens` | Token state, expiry, refresh status, and shop binding. |
 | `sync_state` | Polling cursors, last successful sync, and drift markers. |
 | `operator_audit` | Telegram approvals, overrides, and manual commands. |
@@ -1221,6 +1230,63 @@ Every repair must produce an audit record with before/after counts and affected 
 
 The engine must be strong enough to handle event ingestion, product knowledge, chat decisions, Excel reports, and Telegram control without becoming fragile. It should use explicit pipelines, bounded concurrency, and measurable quality gates.
 
+### Feature Flags and Rollout
+
+Every automation starts disabled or simulator-only. It moves through explicit rollout states:
+
+```text
+off -> simulator -> shadow -> supervised -> limited_auto -> full_auto
+```
+
+State meanings:
+
+- `off`: capability is unavailable.
+- `simulator`: capability runs only with fake/provider-free data.
+- `shadow`: capability evaluates real data but does not create side effects.
+- `supervised`: capability creates recommendations or drafts for approval.
+- `limited_auto`: capability can auto-execute only for low-risk, allowlisted cases.
+- `full_auto`: capability can auto-execute within its approved policy envelope.
+
+Rollout rules:
+
+- high-risk domains cannot move past `supervised`.
+- any write-capable Shopee action requires capability discovery and at least one successful supervised run.
+- each state transition requires a versioned config change and audit entry.
+- rollback must be one command from Telegram for owners.
+- rollout state is per capability, not global. For example, label download can be `limited_auto` while ship order remains `supervised`.
+
+Feature flag dimensions:
+
+- shop id.
+- action type.
+- risk tier.
+- provider capability.
+- policy version.
+- operator role.
+- time window or rollout percentage.
+
+### Capability Discovery and Degradation
+
+Before enabling any Shopee-backed workflow, the system should run capability checks:
+
+- auth/token validity.
+- API module permission.
+- read endpoint availability.
+- write endpoint availability where relevant.
+- rate limit behavior.
+- required fields and regional differences.
+- sandbox/prod host correctness.
+- fallback mode.
+
+If a capability fails:
+
+- mark it degraded.
+- create an operator task when it affects operations.
+- switch to simulator/manual import/draft-only mode if available.
+- prevent dependent automations from executing.
+
+Capability state should be visible through `/capabilities` and included in `/health deep`.
+
 ### Execution Engine
 
 Use a database-backed work queue inside the modular monolith for phase one. Each unit of work should have:
@@ -1367,6 +1433,36 @@ Optimization rules:
 - tune thresholds from operator corrections, not intuition alone.
 - keep high-risk actions human-gated even if model confidence is high.
 
+### Production Readiness Scorecard
+
+Each capability must reach a readiness score before production rollout.
+
+Scorecard dimensions:
+
+| Dimension | Required evidence |
+| --- | --- |
+| Capability | API permission discovered, fallback defined, and region/account constraints recorded. |
+| Data | Source mappings, constraints, indexes, reconciliation, and data-quality checks exist. |
+| Policy | Risk tier, allowed actions, forbidden actions, approval path, and rollback path are explicit. |
+| Telegram UX | Menu entry, action card, pagination/search path, role permission, and expiry behavior exist. |
+| Reliability | Idempotency, retry, timeout, dead-letter, outbox, and replay behavior are tested. |
+| Security | Secrets, PII handling, role gates, audit log, and dangerous action confirmation are tested. |
+| Memory | Relevant memory source, freshness, conflict behavior, and retrieval precedence are defined. |
+| Reporting | Metrics, export/audit records, and operator summary exist where relevant. |
+| Tests | Simulator scenario, unit tests, failure injection, and regression set pass. |
+| Operations | Runbook, alert routing, SLO, owner, and incident path are documented. |
+
+Readiness levels:
+
+- `R0`: idea only.
+- `R1`: designed and simulator-backed.
+- `R2`: shadow mode on real data.
+- `R3`: supervised production.
+- `R4`: limited low-risk automation.
+- `R5`: mature automation with audits, SLOs, and rollback history.
+
+No feature should be described as production-perfect unless it is at least `R4`; high-risk workflows intentionally remain at `R3`.
+
 ### Quality Gates
 
 Before enabling an automation in production:
@@ -1394,6 +1490,29 @@ Initial targets:
 
 These are tuning targets, not hard guarantees. The system should alert when it misses them repeatedly.
 
+### SLOs and Error Budgets
+
+Use SLOs to decide when to optimize or pause automation.
+
+Initial SLOs:
+
+- event ingestion availability: 99.5% monthly.
+- successful reconciliation run per domain: at least once per configured interval.
+- Telegram P0/P1 delivery: 99% within 30 seconds after local detection.
+- Telegram callback acknowledgement: 95% under 2 seconds.
+- low-risk chat decision: 95% under 10 seconds when dependencies are healthy.
+- label document readiness workflow: 95% completes or escalates within 2 minutes after eligibility.
+- daily audit workbook generation: 99% success for available local data.
+- no duplicate external side effect from the same idempotency key.
+- no cursor advancement without committed source data.
+
+If an error budget is exhausted:
+
+- pause affected automation flag.
+- create incident.
+- route to owner.
+- keep read-only monitoring and supervised recommendations active where safe.
+
 ## Security
 
 Security requirements:
@@ -1406,6 +1525,67 @@ Security requirements:
 - back up the database and evidence files.
 - encrypt backups where practical.
 - record every autonomous action and human override.
+
+### Privacy and Data Minimization
+
+The bot should expose only the data needed for operations.
+
+Rules:
+
+- mask buyer identifiers in Telegram cards unless an operator opens details.
+- avoid storing unnecessary buyer PII.
+- avoid sending raw webhook payloads into Telegram.
+- store sensitive evidence files with restrictive permissions.
+- redact tokens, signatures, phone numbers, addresses, and auth codes from logs.
+- separate audit ids from customer-visible messages.
+- keep customer memory operational, not personal. Store unresolved promises, risk state, and order context; avoid broad profiling.
+- define retention windows for chat context, evidence files, exports, and customer memory.
+
+### Configuration and Secrets
+
+Configuration must be versioned and auditable:
+
+- active feature flags.
+- policy version.
+- prompt version.
+- LLM provider/model settings.
+- Telegram routing settings.
+- rate limits.
+- report templates.
+- admin fee assumptions.
+- alert thresholds.
+
+Secrets must not be stored in config versions. Secrets live only in environment variables or a VPS secret mechanism. `/health` may report presence/expiry state, never secret values.
+
+### Incident Runbooks
+
+Runbooks should be available from Telegram for owner/operator roles.
+
+Required runbooks:
+
+- Shopee auth/token failure.
+- webhook outage.
+- polling/reconciliation drift spike.
+- database locked or integrity check failure.
+- outbox stuck or duplicate side-effect risk.
+- Telegram callback failure.
+- label generation/download failure.
+- Excel/report generation failure.
+- LLM provider outage.
+- bad auto-reply incident.
+- finance mismatch spike.
+- product knowledge corruption or stale cache.
+
+Each runbook defines:
+
+- trigger.
+- severity.
+- immediate containment.
+- Telegram commands.
+- data to inspect.
+- safe repair steps.
+- escalation criteria.
+- post-incident audit requirements.
 
 ## Observability
 
@@ -1469,6 +1649,11 @@ Telegram commands:
 - `/learn approve <proposal_id>`: promote a tested learning proposal.
 - `/learn reject <proposal_id>`: reject a learning proposal with reason.
 - `/learn rollback <version_id>`: revert supported memory, policy, or prompt versions.
+- `/capabilities`: show Shopee API capability discovery, degraded modules, and fallback modes.
+- `/flags`: show automation rollout state by capability.
+- `/flag set <capability> <state>`: owner-only rollout change with confirmation.
+- `/incidents`: show open incidents and runbooks.
+- `/runbook <name>`: open a guided incident response checklist.
 - `/db health`: show database size, WAL size, lock count, slow queries, backup status, and integrity check status.
 - `/sync audit`: show reconciliation coverage, drift count, cursor lag, and latest repair actions.
 - `/repair <subject>`: owner-only guided repair for refetch/replay/rebuild actions.
@@ -1521,6 +1706,12 @@ Required tests:
 - prompt/policy version evaluation tests.
 - customer memory privacy/minimization tests.
 - retrieval precedence tests for conflicting memory.
+- capability discovery tests.
+- feature flag transition and rollback tests.
+- config version audit tests.
+- incident runbook execution tests.
+- privacy redaction tests.
+- SLO/error budget tests.
 - database uniqueness and foreign key tests.
 - outbox idempotency recovery tests.
 - reconciliation watermark tests.
@@ -1556,6 +1747,11 @@ Simulator scenarios:
 - repeated product alias becomes candidate memory.
 - conflicting product memory blocked from auto-reply.
 - prompt version fails regression and cannot be promoted.
+- Shopee capability degraded and dependent automation blocked.
+- feature flag rollback after failed action spike.
+- Telegram card redacts buyer PII.
+- P0 incident runbook execution.
+- SLO burn pauses affected automation.
 - missed webhook repaired by overlapping polling.
 - duplicate provider update deduped by checksum.
 - outbox crash after provider send.
@@ -1588,6 +1784,7 @@ Simulator scenarios:
 - Telegram menu, action card, callback idempotency, roles, and alert severity.
 - Database-backed work queue with leases, priorities, and retry handling.
 - Database correctness layer with constraints, outbox, inbox offsets, reconciliation runs, and data quality checks.
+- Feature flags, capability discovery, config versions, incidents, and runbook tables.
 - Order, logistics, and finance skeleton agents.
 - Operations Supervisor Agent with agenda, inbox, SLA watch, and `/find` lookup in simulator mode.
 - Memory and Learning Agent with candidate memory, approval workflow, and version tables.
@@ -1601,6 +1798,7 @@ Simulator scenarios:
 ### Phase 2: Shopee Production Integration
 
 - Real signed Shopee client.
+- Capability discovery against authorized Shopee shop.
 - Token refresh persistence.
 - Real order detail and order list sync.
 - Real logistics document generation.
@@ -1617,6 +1815,7 @@ Simulator scenarios:
 - Dead-letter replay.
 - Daily Telegram summaries.
 - Production audit jobs for safety, data freshness, and queue health.
+- Production SLO/error-budget monitoring and incident runbooks.
 
 ### Phase 3: Customer Chat Automation
 
@@ -1648,6 +1847,7 @@ Simulator scenarios:
 - Migration path to PostgreSQL if volume requires it.
 - Performance optimization based on real queue, API, report, and operator latency data.
 - PostgreSQL migration readiness review if SQLite contention or report load exceeds thresholds.
+- Capability readiness scorecard review for each automation lane.
 
 ## Out of Scope for Initial Build
 
@@ -1657,6 +1857,7 @@ Simulator scenarios:
 - Final automated refund, dispute, or compensation decisions.
 - Autonomous promo creation, deletion, or price changes before policy and margin gates are proven.
 - Review/rating automation unless an official API/export/manual import source is available.
+- Any workflow entering `full_auto` before it reaches the required readiness level and has rollback history.
 - Hardcoded Shopee fee formulas as authoritative finance logic.
 - Multi-shop scale-out architecture.
 - Autonomous response to high-risk customer messages.
@@ -1676,6 +1877,8 @@ Simulator scenarios:
 - Database tuning must be evidence-driven from lock counts, query latency, drift counts, and backup/restore tests.
 - Memory is not truth unless it is source-attributed and approved for the intended use. Candidate memory must not drive autonomous customer-facing actions.
 - Self-learning must improve proposals and retrieval. It must not silently change high-risk behavior.
+- Feature flags and capability discovery are mandatory for production. Do not enable Shopee write actions based on design assumptions alone.
+- Privacy redaction must be verified before Telegram cards include customer/order details.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
 
@@ -1701,6 +1904,9 @@ The design is ready for implementation planning when:
 - database constraints and reconciliation jobs catch duplicate, missing, stale, and drifted records.
 - long-term memory is versioned, source-attributed, approved, and retrievable by product/customer/policy/report context.
 - learning proposals are evaluated and approved before changing production behavior.
+- capability discovery is stored and visible through Telegram before production API workflows are enabled.
+- feature flags can roll back any automation lane without code changes.
+- privacy redaction, incident runbooks, and SLO/error-budget monitoring are implemented.
 - backup and restore smoke tests pass before production operation.
 - simulator can replay core workflows without Shopee credentials.
 - real Shopee integration can be added behind gateway interfaces.
