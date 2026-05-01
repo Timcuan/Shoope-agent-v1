@@ -29,6 +29,7 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - Customer dynamics scope: the agent must model conversation state, customer mood, urgency, risk, purchase context, and escalation triggers.
 - Telegram UX scope: Telegram must work as a proper control room with concise menus, action cards, inline approvals, health monitoring, exports, and safe operator workflows.
 - Engine quality scope: the system must include audit, tuning, backtesting, simulation, and safety gates. The goal is production-grade reliability, not unbounded autonomy.
+- Operator replacement scope: the bot should cover the routine Seller Center checks that force operators to open Shopee repeatedly, while keeping high-risk changes supervised from Telegram.
 
 ## Shopee API Capability Map
 
@@ -50,6 +51,28 @@ The implementation should maximize these use cases:
 | Account Health APIs | Read performance, penalty, or account health signals where available. | Alert late shipment risk, operational penalty risk, and service quality issues. |
 | Media APIs | Upload supported images or files where needed. | Support product/chat evidence workflows and shipping/return evidence if allowed. |
 | Promotion APIs | Read or manage vouchers, discounts, bundle deals, add-on deals, top picks, and follow prizes where permission allows. | Let the agent answer promo questions from real promo state and recommend safe promo references. |
+
+Additional seller-center replacement use cases:
+
+| Area | Telegram-supervised automation |
+| --- | --- |
+| Daily agenda | Morning briefing of pending orders, labels, chats, returns, stock risks, settlement risks, and account health issues. |
+| Exception inbox | One queue for orders, chats, returns, finance, stock, labels, and sync problems that need attention. |
+| Search and lookup | `/find <order/customer/SKU>` returns order timeline, customer context, product facts, and latest actions. |
+| Fulfillment SLA | Alerts for order aging, label not printed, pickup/dropoff risk, delayed shipment, and courier tracking stagnation. |
+| Packing supervision | Batch picklist, packing checklist, item count validation, fragile/high-value flags, and skipped-order reasons. |
+| Product listing hygiene | Detect stale stock, missing SKU mapping, missing dimensions/weight, incomplete product knowledge, inactive products, and price anomalies. |
+| Promotion supervision | Monitor seller vouchers, discounts, bundles, add-on deals, top picks, follow prizes, and promo expiry if API permission exists. |
+| Price and margin guard | Warn when promo, fee, shipping, or settlement creates weak or negative estimated margin. |
+| Chat quality control | Review auto-sent replies, unresolved chats, sentiment deterioration, slow response risk, and repeated questions. |
+| Customer memory | Show buyer order history, risk markers, conversation mode, unresolved promises, and last operator decision. |
+| Return/dispute desk | Evidence checklist, case timeline, recommended response draft, deadline alert, and approval workflow. |
+| Review/rating watch | If review/rating API or export is available, summarize low ratings, product issues, and reply recommendations. Otherwise track only manually imported review data. |
+| Account health | Monitor shop performance, penalties, late shipment risk, cancellation risk, and service quality signals where available. |
+| Reconciliation center | Show sync drift, missing settlement, missing document, duplicate webhook, failed action, and replay options. |
+| Knowledge maintenance | Ask operators to fill missing product facts or FAQ answers directly from Telegram when automation is blocked. |
+
+These features should be implemented as supervised work queues first. Automation can be enabled later per workflow after simulator, audit, and policy gates pass.
 
 Logistics capability sequence:
 
@@ -94,6 +117,7 @@ Event Router
         +--> Inventory Agent
         +--> Reporting Agent
         +--> Product Knowledge Agent
+        +--> Operations Supervisor Agent
         +--> Chat Agent
         +--> Return/Dispute Agent
         +--> Sync/Recovery Agent
@@ -379,6 +403,44 @@ Product Knowledge Agent keeps product facts usable for automation. It syncs Shop
 
 It must prevent the Chat Agent from making unsafe product claims. A response about product availability, compatibility, warranty, bundle contents, or shipping constraint is allowed only when the required facts are present and fresh enough.
 
+### Operations Supervisor Agent
+
+Operations Supervisor Agent turns many small Seller Center checks into one Telegram-supervised operating queue. Its job is not to replace every Shopee screen, but to make the daily decisions visible and actionable without opening Shopee unless a case truly needs manual inspection.
+
+Responsibilities:
+
+- build the daily agenda.
+- maintain the exception inbox.
+- rank operational issues by urgency and business impact.
+- detect orders close to SLA breach.
+- detect missing label, missing pickup/dropoff action, or stale tracking.
+- detect stock, SKU, product knowledge, and listing hygiene gaps.
+- monitor promotion and voucher state when API permission allows it.
+- monitor account health and penalty signals when API permission allows it.
+- summarize return/dispute deadlines and missing evidence.
+- create operator tasks from unresolved anomalies.
+- close tasks automatically when reconciliation proves the issue is resolved.
+
+It should emit `OperatorTask` records:
+
+```text
+OperatorTask
+- task_id
+- category: order | chat | logistics | inventory | finance | product | promo | return | account_health | sync
+- subject_id
+- severity: P0 | P1 | P2 | P3
+- title
+- summary
+- recommended_action
+- evidence_refs
+- due_at
+- status: open | acknowledged | waiting | resolved | dismissed
+- assigned_role
+- action_buttons
+```
+
+The task queue becomes the Telegram home screen for daily operations.
+
 ### Chat Agent
 
 Chat Agent classifies intent, sentiment, risk, urgency, and confidence. It retrieves relevant order, tracking, product, FAQ, and policy context. It proposes either a template response, LLM-assisted draft, approval request, or escalation.
@@ -483,6 +545,11 @@ Core tables:
 | `telegram_callbacks` | Opaque callback ids, expiry, action binding, and execution status. |
 | `automation_versions` | Policy, prompt, product knowledge, report query, and simulator scenario versions. |
 | `operator_feedback` | Corrections, overrides, false auto-reply tags, and tuning notes. |
+| `operator_tasks` | Daily agenda and exception inbox tasks with severity, due time, status, and action buttons. |
+| `sla_watch` | Order, chat, return, label, pickup/dropoff, and settlement deadlines. |
+| `promotion_state` | Voucher, discount, bundle, add-on, top-pick, and follow-prize snapshots where permission allows. |
+| `listing_health` | Product listing gaps, stale facts, price anomalies, stock sync issues, and missing attributes. |
+| `customer_memory` | Buyer context, unresolved promises, sentiment trajectory, and operator notes. |
 | `tokens` | Token state, expiry, refresh status, and shop binding. |
 | `sync_state` | Polling cursors, last successful sync, and drift markers. |
 | `operator_audit` | Telegram approvals, overrides, and manual commands. |
@@ -618,11 +685,17 @@ Primary command groups:
 /start
 /menu
 /health
+/agenda
+/inbox
+/find
 /orders
 /chats
 /inventory
 /finance
 /returns
+/products
+/promos
+/customers
 /reports
 /exports
 /alerts
@@ -635,8 +708,10 @@ The main menu should show role-aware sections:
 
 ```text
 Control Room
-[Health] [Orders] [Chats]
+[Agenda] [Inbox] [Health]
+[Orders] [Chats] [Labels]
 [Inventory] [Finance] [Returns]
+[Products] [Promos] [Customers]
 [Reports] [Exports] [Settings]
 ```
 
@@ -647,6 +722,10 @@ View-specific menus:
 - Inventory: `Low Stock`, `Stale Product Data`, `SKU Mapping Issues`, `Product Knowledge Gaps`.
 - Finance: `Today`, `This Week`, `Settlement Mismatch`, `Export`.
 - Returns: `New`, `Needs Evidence`, `Needs Decision`, `Disputed`.
+- Products: `Listing Gaps`, `Price Anomalies`, `Inactive`, `Knowledge Missing`, `Sync Stale`.
+- Promos: `Active`, `Ending Soon`, `Weak Margin`, `Voucher Questions`, `Needs Approval`.
+- Customers: `Search`, `Sensitive`, `Repeat Complaint`, `Promises`, `Human Only`.
+- Inbox: `P0`, `P1`, `P2`, `Waiting`, `Snoozed`, `Resolved Today`.
 - Reports: `Daily`, `Weekly`, `Monthly`, `Custom Range`.
 
 ### Telegram Card Patterns
@@ -701,6 +780,58 @@ Missing: warranty policy, material, care instruction
 Impact: Chat auto-reply disabled for product-specific questions
 
 [Add Note] [Import FAQ] [Snooze]
+```
+
+Daily agenda card:
+
+```text
+Daily Agenda
+Orders to pack: 18
+Labels ready: 14
+Label issues: 2
+Chats waiting: 5
+Returns/disputes: 1
+Low stock critical: 3
+Finance anomalies: 2
+
+[Open Inbox] [Create Packing Batch] [Export Today]
+[Health] [Snooze P3]
+```
+
+Exception inbox card:
+
+```text
+P1 Exception
+Type: Fulfillment SLA
+Order: 250501ABC
+Issue: paid order has no label after 6h
+Recommended: generate label or hold order
+
+[Generate Label] [Hold] [Details]
+[Customer Context] [Snooze 1h]
+```
+
+Product hygiene card:
+
+```text
+Product Listing Issue
+SKU: ABC-BLACK-L
+Issue: stock stale for 18h + missing weight
+Impact: auto stock reply and label eligibility blocked
+
+[Refresh Product] [Add Weight] [Snooze]
+```
+
+Promo supervision card:
+
+```text
+Promo Margin Warning
+Voucher: MAYSALE10
+SKU: ABC-BLACK-L
+Estimated margin after voucher: 4.2%
+Threshold: 8%
+
+[Keep] [Pause/End if API allows] [Details]
 ```
 
 ### Telegram Roles and Permissions
@@ -961,6 +1092,14 @@ Minimum metrics:
 - print job success and failure.
 - average time from eligible order to print-ready document.
 - orders skipped from batch print by reason.
+- open operator task count by severity.
+- average exception resolution time.
+- fulfillment SLA risk count.
+- chat SLA risk count.
+- return/dispute deadline risk count.
+- product listing hygiene gap count.
+- promotion margin warning count.
+- account health warning count.
 - Telegram callback acknowledgement latency.
 - queue backlog and age by worker pool.
 - report generation duration.
@@ -971,6 +1110,13 @@ Minimum metrics:
 Telegram commands:
 
 - `/health`: service, database, Shopee auth, scheduler, dead-letter count, and last sync.
+- `/agenda`: show the daily operating agenda and top recommended actions.
+- `/inbox`: show open exceptions grouped by severity and category.
+- `/find <query>`: search order, order number, SKU, product alias, customer, or task.
+- `/orders risk`: show orders close to SLA breach, missing label, or blocked fulfillment.
+- `/products gaps`: show product knowledge and listing hygiene gaps.
+- `/promos`: show active promos, ending promos, and margin warnings when data is available.
+- `/customers sensitive`: show conversations/customers in sensitive or human-only mode.
 - `/summary today`: orders, labels, chat automation, escalations, finance anomalies.
 - `/export orders today`: create and send an order workbook.
 - `/export finance month`: create and send a finance workbook.
@@ -1009,6 +1155,12 @@ Required tests:
 - batch label grouping tests.
 - document archive checksum tests.
 - print queue failure and retry tests.
+- operations inbox ranking tests.
+- daily agenda generation tests.
+- SLA watch tests.
+- product listing hygiene tests.
+- promotion margin warning tests.
+- `/find` lookup tests across order, SKU, product alias, customer, and task.
 - product knowledge freshness and fallback tests.
 - customer dynamics state transition tests.
 - Telegram menu and callback idempotency tests.
@@ -1027,6 +1179,11 @@ Simulator scenarios:
 - batch label generation with mixed couriers.
 - duplicate print request.
 - order skipped from print batch due to custom request.
+- daily agenda with mixed order, chat, finance, and stock tasks.
+- SLA breach approaching.
+- product listing missing weight or stale stock.
+- promo margin below threshold.
+- account health penalty alert.
 - duplicate webhook.
 - out-of-order order status update.
 - missed webhook repaired by polling.
@@ -1054,6 +1211,7 @@ Simulator scenarios:
 - Telegram menu, action card, callback idempotency, roles, and alert severity.
 - Database-backed work queue with leases, priorities, and retry handling.
 - Order, logistics, and finance skeleton agents.
+- Operations Supervisor Agent with agenda, inbox, SLA watch, and `/find` lookup in simulator mode.
 - Reporting Agent with daily summary and Excel writer.
 - Shopee monthly audit workbook template adapter for `auditshopeedef.xlsx`.
 - Product Knowledge Base schema and import/sync skeleton.
@@ -1070,6 +1228,9 @@ Simulator scenarios:
 - Real shipping document download and archive.
 - Print-ready label/AWB/resi bundle delivery through Telegram.
 - Product catalog and variant sync.
+- Account health sync where API permission allows it.
+- Promotion state sync where API permission allows it.
+- Listing health checks from product catalog data.
 - First production Excel reports from real order, item, finance, and inventory data.
 - First production Shopee monthly audit workbook from real order and settlement data.
 - Reconciliation jobs.
@@ -1089,12 +1250,15 @@ Simulator scenarios:
 - Conversation state machine.
 - Override feedback tracking.
 - Prompt, policy, and threshold tuning loop.
+- Customer memory and unresolved promise tracking.
 
 ### Phase 4: Returns, Disputes, Inventory, and Learning Loop
 
 - Return/dispute triage.
 - Inventory cache and stock movement alerts.
 - Product knowledge quality scoring.
+- Promotion and listing optimization recommendations.
+- Account health and SLA trend reports.
 - Advanced Excel recaps for weekly/monthly operations.
 - Finance anomaly tuning.
 - Operator correction feedback.
@@ -1108,6 +1272,8 @@ Simulator scenarios:
 - Full auto-ship workflow.
 - Direct physical printer integration before printer target and VPS environment are explicitly configured.
 - Final automated refund, dispute, or compensation decisions.
+- Autonomous promo creation, deletion, or price changes before policy and margin gates are proven.
+- Review/rating automation unless an official API/export/manual import source is available.
 - Hardcoded Shopee fee formulas as authoritative finance logic.
 - Multi-shop scale-out architecture.
 - Autonomous response to high-risk customer messages.
@@ -1122,6 +1288,7 @@ Simulator scenarios:
 - Excel exports should be generated from local snapshots and should not block core event processing.
 - The `auditshopeedef.xlsx` report shape should be treated as a versioned business template. Do not hardcode column positions without a template schema and validation test.
 - Direct printing should be an optional adapter. The core system must first produce archived, print-ready documents reliably.
+- Seller Center replacement should prioritize visibility and supervised actions first. Do not add autonomous write actions until the read/alert/approval loop is reliable.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
 
@@ -1141,6 +1308,7 @@ The design is ready for implementation planning when:
 - the agent can answer product questions only when product knowledge is present and fresh.
 - the agent can detect customer mood, topic shifts, and escalation risk.
 - Telegram control flows are usable through menus and inline action cards.
+- Telegram provides an agenda, exception inbox, and cross-entity search so routine Seller Center checks are centralized.
 - every automation has audit/version records, quality gates, and a pause or fallback path.
 - queue workers can recover leased work without duplicate external side effects.
 - simulator can replay core workflows without Shopee credentials.
