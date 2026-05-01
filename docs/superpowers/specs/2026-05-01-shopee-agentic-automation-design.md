@@ -139,6 +139,197 @@ Policy Engine + Human Gate
 
 The system processes events first and performs actions second. Every webhook, polling result, simulator event, and Telegram command becomes a normalized event with a correlation id. Agents consume those events idempotently. This makes replay, audit, drift repair, and incident analysis possible.
 
+### Maintainability Architecture
+
+The system should be a modular monolith with bounded contexts, not a single large service file and not premature microservices. A feature should be easy to locate, test, and replace.
+
+Bounded contexts:
+
+- `ingress`: webhook, Telegram update, simulator input, and polling normalization.
+- `events`: event store, replay, dedupe, and dead-letter.
+- `orders`: order snapshots, items, lifecycle, customer linkage.
+- `logistics`: shipments, shipping documents, labels, print-ready files, packing batches.
+- `finance`: ledger, settlement, mismatch detection, audit workbook sources.
+- `inventory`: product stock, reserved stock, movement ledger, low-stock alerts.
+- `catalog`: product knowledge, listing health, SKU aliases, FAQ facts.
+- `chat`: intent, conversation state, reply decisions, auto-send/approval.
+- `returns`: return/dispute triage and evidence.
+- `operations`: agenda, inbox, SLA watch, operator tasks, runbooks.
+- `reports`: Excel exports, report templates, audit workbook generation.
+- `memory`: long-term memory, learning proposals, evaluations, prompt/policy versions.
+- `policy`: rule matrix, risk gates, feature flags, capability readiness.
+- `providers`: Shopee, Telegram, LLM, filesystem, and optional printer adapters.
+
+Dependency direction:
+
+```text
+interfaces/contracts
+        ^
+domain modules
+        ^
+application services
+        ^
+adapters/providers
+        ^
+entrypoints/processes
+```
+
+Rules:
+
+- Domain modules depend only on contracts and repository interfaces.
+- Domain modules do not import FastAPI, aiogram, httpx, openpyxl, Shopee SDK code, or environment settings.
+- Provider adapters implement ports. They do not contain business decisions.
+- Application services orchestrate domain modules, policy checks, and outbox writes.
+- Entrypoints are thin: parse request/update, call application service, return/ack.
+- Cross-context communication uses events, typed commands, or repository interfaces, not direct table mutation across modules.
+
+### Ports and Adapters
+
+Key ports:
+
+```text
+ShopeeGateway
+TelegramGateway
+LLMGateway
+DocumentStore
+ExcelWriter
+Clock
+IdGenerator
+FeatureFlagStore
+PolicyStore
+MemoryStore
+UnitOfWork
+```
+
+Each port needs at least two implementations where practical:
+
+- real provider adapter.
+- simulator/fake adapter for tests.
+
+This keeps Shopee permissions, Telegram behavior, LLM output, Excel generation, and file storage testable without live services.
+
+### Shared Kernel Limits
+
+The shared kernel should stay small:
+
+- ids and timestamps.
+- money and currency types.
+- risk tier enum.
+- decision/action/request contracts.
+- event envelope.
+- error/result types.
+- pagination and sorting helpers.
+
+Do not put business rules in shared utilities. If a helper starts needing shop policy, order status, product facts, or customer state, it belongs in a bounded context.
+
+### Vertical Slice Structure
+
+Each feature should be implemented as a vertical slice:
+
+```text
+contract -> domain decision -> policy rule -> application service -> adapter/outbox -> Telegram UX -> tests -> docs
+```
+
+Example for shipping labels:
+
+```text
+ShippingDocumentRequested event
+-> LogisticsAgent eligibility decision
+-> PolicyEngine label rule
+-> CreateShippingDocumentService
+-> ShopeeGateway + DocumentStore + outbox
+-> Telegram label card
+-> simulator + idempotency + failure tests
+```
+
+This prevents “gimmick features” because every slice must connect a real source, real action path, operator UX, and tests.
+
+### Module Ownership and File Boundaries
+
+Recommended package shape:
+
+```text
+src/shopee_agent/
+  contracts/
+  config/
+  entrypoints/
+    api/
+    telegram/
+    worker/
+    scheduler/
+  app/
+    commands/
+    services/
+    policies/
+  domains/
+    orders/
+    logistics/
+    finance/
+    inventory/
+    catalog/
+    chat/
+    returns/
+    operations/
+    reports/
+    memory/
+  providers/
+    shopee/
+    telegram/
+    llm/
+    documents/
+    excel/
+  persistence/
+    models/
+    repositories/
+    migrations/
+  simulator/
+  tests/
+```
+
+Files should stay focused. If a file exceeds roughly 400 lines or mixes multiple domains, split it by command, service, repository, or policy. This is a guideline, not a hard rule, but large files require a reason.
+
+### Extension Rules
+
+To add a new automation:
+
+1. Add or update the feature registry entry.
+2. Define the source of truth and capability requirement.
+3. Add typed event/command/decision contracts.
+4. Implement domain decision logic without provider imports.
+5. Add policy and feature flag gates.
+6. Add outbox/action executor path for side effects.
+7. Add Telegram card/menu/command if operator-visible.
+8. Add simulator scenario and tests.
+9. Add runbook/alert if failure affects operations.
+10. Roll out from simulator to shadow to supervised.
+
+### Architecture Decision Records
+
+Architectural decisions should be recorded under `docs/adr/` when they affect boundaries, storage, provider choices, deployment, or irreversible tradeoffs.
+
+Minimum ADRs before implementation:
+
+- modular monolith over microservices.
+- SQLite WAL first with PostgreSQL migration path.
+- DB-backed queue/outbox over Redis/Celery in phase one.
+- Telegram-only operator UI.
+- official Shopee API only, no Seller Center scraping.
+- relational product knowledge first, no vector DB in phase one.
+- supervised self-learning instead of autonomous mutation.
+
+### Split-Out Triggers
+
+Do not split into services preemptively. Split a module into a separate service only when a measured reason appears:
+
+- queue latency cannot meet SLO after local optimization.
+- SQLite write contention forces PostgreSQL and worker separation.
+- report generation blocks core workflows despite async job separation.
+- LLM classification load needs independent scaling.
+- document generation/printing needs a separate host or printer environment.
+- operational ownership requires independent deploy cadence.
+
+Until then, keep boundaries in code and database contracts, not network calls.
+
 ## Runtime Shape
 
 The initial runtime should use:
@@ -732,6 +923,7 @@ Core tables:
 | `slo_windows` | SLO/error-budget measurements for ingestion, Telegram callbacks, sync, reports, labels, and chat decisions. |
 | `feature_registry` | Realness-gate records for each feature, source of truth, permissions, fallback, tests, owner, and rollout flag. |
 | `dependency_inventory` | Approved runtime dependencies, version pins, rationale, license, and replacement/removal notes. |
+| `architecture_decisions` | ADR metadata for major boundary, storage, provider, and deployment decisions. |
 | `tokens` | Token state, expiry, refresh status, and shop binding. |
 | `sync_state` | Polling cursors, last successful sync, and drift markers. |
 | `operator_audit` | Telegram approvals, overrides, and manual commands. |
@@ -1804,6 +1996,11 @@ Required tests:
 - no-unapproved-dependency test.
 - no-unofficial-shopee-api usage test.
 - no-browser-scraping workflow test.
+- architecture dependency direction tests.
+- provider import boundary tests.
+- ports/adapters fake implementation tests.
+- feature vertical-slice completeness tests.
+- ADR presence tests for major architectural decisions.
 - database uniqueness and foreign key tests.
 - outbox idempotency recovery tests.
 - reconciliation watermark tests.
@@ -1847,6 +2044,9 @@ Simulator scenarios:
 - feature without source of truth remains simulator-only.
 - unapproved dependency fails dependency inventory check.
 - attempted unofficial Shopee endpoint is blocked.
+- domain module imports provider adapter and boundary test fails.
+- feature missing Telegram/operator path cannot leave simulator.
+- architecture decision without ADR blocks implementation plan approval.
 - missed webhook repaired by overlapping polling.
 - duplicate provider update deduped by checksum.
 - outbox crash after provider send.
@@ -1881,6 +2081,7 @@ Simulator scenarios:
 - Database correctness layer with constraints, outbox, inbox offsets, reconciliation runs, and data quality checks.
 - Feature flags, capability discovery, config versions, incidents, and runbook tables.
 - Feature registry and dependency inventory.
+- Architecture decision records for core boundaries and storage/provider decisions.
 - Order, logistics, and finance skeleton agents.
 - Operations Supervisor Agent with agenda, inbox, SLA watch, and `/find` lookup in simulator mode.
 - Memory and Learning Agent with candidate memory, approval workflow, and version tables.
@@ -1955,6 +2156,8 @@ Simulator scenarios:
 - Review/rating automation unless an official API/export/manual import source is available.
 - Any workflow entering `full_auto` before it reaches the required readiness level and has rollback history.
 - New dependencies, agent frameworks, vector databases, Redis/Celery, or browser automation unless the feature's realness gate proves they are necessary.
+- Cross-domain direct mutation or provider imports inside domain modules.
+- Splitting into microservices before a measured split-out trigger exists.
 - Hardcoded Shopee fee formulas as authoritative finance logic.
 - Multi-shop scale-out architecture.
 - Autonomous response to high-risk customer messages.
@@ -1977,6 +2180,8 @@ Simulator scenarios:
 - Feature flags and capability discovery are mandatory for production. Do not enable Shopee write actions based on design assumptions alone.
 - Every dependency must have an owner, rationale, version pin, and removal/replacement rule. Unused dependencies should be deleted.
 - Every feature must pass the realness gate before implementation. If it cannot name a source of truth and official write path, it is a simulator-only idea.
+- Module boundaries must be enforceable through tests or static checks. Domain modules must not import provider adapters or entrypoint frameworks.
+- Prefer vertical slices over horizontal partial implementations. A half-built provider call without policy, Telegram UX, tests, and fallback is not complete.
 - Privacy redaction must be verified before Telegram cards include customer/order details.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
@@ -2006,6 +2211,8 @@ The design is ready for implementation planning when:
 - capability discovery is stored and visible through Telegram before production API workflows are enabled.
 - feature flags can roll back any automation lane without code changes.
 - every implemented feature has a real source of truth, approved dependency path, tests, fallback, and rollout flag.
+- architecture boundaries are documented, enforced, and covered by dependency/import tests.
+- major architecture decisions have ADRs.
 - privacy redaction, incident runbooks, and SLO/error-budget monitoring are implemented.
 - backup and restore smoke tests pass before production operation.
 - simulator can replay core workflows without Shopee credentials.
