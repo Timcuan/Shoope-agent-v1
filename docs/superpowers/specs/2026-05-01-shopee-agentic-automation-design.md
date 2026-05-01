@@ -25,6 +25,8 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - Reporting scope: automatic Excel output for daily, weekly, monthly, order, finance, inventory, chat, and escalation recaps.
 - Product intelligence scope: the agent must know product catalog details, variants, stock, pricing, policies, FAQ, product constraints, and approved selling points before it interacts with customers.
 - Customer dynamics scope: the agent must model conversation state, customer mood, urgency, risk, purchase context, and escalation triggers.
+- Telegram UX scope: Telegram must work as a proper control room with concise menus, action cards, inline approvals, health monitoring, exports, and safe operator workflows.
+- Engine quality scope: the system must include audit, tuning, backtesting, simulation, and safety gates. The goal is production-grade reliability, not unbounded autonomy.
 
 ## Shopee API Capability Map
 
@@ -311,6 +313,11 @@ Core tables:
 | `returns_disputes` | Case reason, evidence, recommendation, and decision state. |
 | `action_requests` | Pending, approved, rejected, and executed action payloads. |
 | `exports` | Generated report metadata, file paths, checksums, and source query versions. |
+| `work_queue` | Background jobs, leases, priorities, attempts, and recovery state. |
+| `alerts` | Open, acknowledged, snoozed, and resolved operator alerts. |
+| `telegram_callbacks` | Opaque callback ids, expiry, action binding, and execution status. |
+| `automation_versions` | Policy, prompt, product knowledge, report query, and simulator scenario versions. |
+| `operator_feedback` | Corrections, overrides, false auto-reply tags, and tuning notes. |
 | `tokens` | Token state, expiry, refresh status, and shop binding. |
 | `sync_state` | Polling cursors, last successful sync, and drift markers. |
 | `operator_audit` | Telegram approvals, overrides, and manual commands. |
@@ -405,6 +412,8 @@ Forbidden LLM behavior:
 
 Telegram is the only operator surface in the initial design.
 
+The bot should feel like an operations console, not a chat script. It should minimize typing, show the right action at the right time, and hide noisy raw data unless an operator asks for details.
+
 Supported interactions:
 
 - order alerts.
@@ -418,6 +427,178 @@ Supported interactions:
 - pause and resume automation.
 - edit, approve, reject, or escalate chat drafts.
 
+### Telegram UX Principles
+
+- Every important alert must answer: what happened, why it matters, what the bot recommends, and what buttons are available.
+- Operators should use buttons for frequent actions and commands for navigation or power-user workflows.
+- Message cards must be short by default and expose details through `Detail`, `Evidence`, `History`, or `Export` buttons.
+- High-risk actions require an explicit confirmation step.
+- Callback buttons must be idempotent. Double taps, retries, or delayed Telegram updates must not execute an action twice.
+- Every callback query must be acknowledged quickly so Telegram clients do not show a stuck loading state.
+- The bot must support quiet hours, severity routing, and digest mode to avoid operator fatigue.
+
+### Telegram Information Architecture
+
+Primary command groups:
+
+```text
+/start
+/menu
+/health
+/orders
+/chats
+/inventory
+/finance
+/returns
+/reports
+/exports
+/alerts
+/settings
+/pause
+/resume
+```
+
+The main menu should show role-aware sections:
+
+```text
+Control Room
+[Health] [Orders] [Chats]
+[Inventory] [Finance] [Returns]
+[Reports] [Exports] [Settings]
+```
+
+View-specific menus:
+
+- Orders: `New`, `Ready to Ship`, `Label Issues`, `Delayed`, `Search`.
+- Chats: `Pending Approval`, `Escalated`, `Human Only`, `Auto-Sent`, `Review Mistakes`.
+- Inventory: `Low Stock`, `Stale Product Data`, `SKU Mapping Issues`, `Product Knowledge Gaps`.
+- Finance: `Today`, `This Week`, `Settlement Mismatch`, `Export`.
+- Returns: `New`, `Needs Evidence`, `Needs Decision`, `Disputed`.
+- Reports: `Daily`, `Weekly`, `Monthly`, `Custom Range`.
+
+### Telegram Card Patterns
+
+Order card:
+
+```text
+Order Ready for Label
+Order: 250501ABC
+Buyer: masked / Shopee id
+Items: 2 SKU, 3 qty
+Risk: Low
+Recommendation: Generate shipping document
+
+[Generate Label] [Hold] [Details]
+[Items] [Buyer History] [Open in Shopee]
+```
+
+Chat approval card:
+
+```text
+Chat Needs Approval
+Customer mood: mildly frustrated
+Intent: delayed shipment question
+Risk: Medium
+Confidence: 0.82
+Recommended reply: "Maaf ya kak, paketnya..."
+
+[Send] [Edit] [Escalate]
+[Order Context] [Policy] [History]
+```
+
+Finance anomaly card:
+
+```text
+Finance Mismatch
+Order: 250501ABC
+Expected: Rp 184.000
+Actual: Rp 171.500
+Delta: Rp 12.500
+Reason guess: shipping/fee difference
+
+[Mark Reviewed] [Export Evidence] [Details]
+```
+
+Product knowledge gap card:
+
+```text
+Product Knowledge Gap
+SKU: ABC-BLACK-L
+Missing: warranty policy, material, care instruction
+Impact: Chat auto-reply disabled for product-specific questions
+
+[Add Note] [Import FAQ] [Snooze]
+```
+
+### Telegram Roles and Permissions
+
+Roles:
+
+- `owner`: all actions, settings, replay, pause/resume, export, approval.
+- `operator`: approvals, escalations, summaries, exports, order/chat handling.
+- `viewer`: health, summaries, and read-only reports.
+
+Sensitive commands:
+
+- `/pause`, `/resume`, `/replay`, high-risk approvals, return/dispute recommendations, and settings changes require owner or configured operator permission.
+- Replays and high-impact actions require confirmation cards.
+
+### Notification Tuning
+
+Alerts should use severity:
+
+- `P0`: auth failure, event processor stopped, database write failure, repeated Shopee action failure. Immediate alert.
+- `P1`: high-risk chat, return/dispute, finance anomaly, repeated label failure. Immediate alert.
+- `P2`: medium-risk chat approval, low-stock critical, stale product knowledge blocking replies. Batched unless urgent.
+- `P3`: normal order summaries, successful exports, routine sync results. Digest only.
+
+The bot should support:
+
+- quiet hours for non-urgent alerts.
+- digest mode for P2/P3.
+- per-role routing.
+- duplicate alert suppression.
+- alert state transitions: `open`, `acknowledged`, `snoozed`, `resolved`.
+
+### Telegram Monitoring UX
+
+`/health` should show:
+
+- service status.
+- Shopee auth status and token expiry window.
+- webhook/polling freshness.
+- scheduler status.
+- queue backlog.
+- dead-letter count.
+- last successful sync per domain.
+- latest export status.
+- product knowledge freshness.
+- auto-action pause state.
+
+`/health deep` should include slow queries, API error rates, retry backlog, and failed action samples.
+
+`/alerts` should show open alerts grouped by severity, with buttons to acknowledge, snooze, resolve, or export evidence.
+
+### Telegram Report UX
+
+`/reports` should open a menu:
+
+```text
+Reports
+[Today] [This Week] [This Month]
+[Finance] [Inventory] [Chats]
+[Custom Range] [Schedule]
+```
+
+Each generated report should send:
+
+- a short Telegram summary.
+- the Excel workbook as a document.
+- source period.
+- generated timestamp.
+- checksum.
+- warnings if data was partial, stale, or reconciled.
+
 Security requirements:
 
 - allowlist Telegram user ids and chat ids.
@@ -425,6 +606,9 @@ Security requirements:
 - command allowlist.
 - audit every command and decision.
 - require explicit confirmation for replay or high-impact commands.
+- verify Telegram webhook secret token if webhooks are used.
+- restrict callback payloads to short opaque action ids, not raw sensitive data.
+- expire approval buttons after a configured window.
 
 ## Reliability
 
@@ -441,6 +625,132 @@ Reliability requirements:
 - fall back to templates or escalation when LLM calls fail.
 
 Webhook processing must be fast. Long-running work should move to internal queued execution, even if the first implementation uses a database-backed work queue inside the monolith.
+
+## Engine Design and Tuning
+
+The engine must be strong enough to handle event ingestion, product knowledge, chat decisions, Excel reports, and Telegram control without becoming fragile. It should use explicit pipelines, bounded concurrency, and measurable quality gates.
+
+### Execution Engine
+
+Use a database-backed work queue inside the modular monolith for phase one. Each unit of work should have:
+
+- `work_id`.
+- `event_id`.
+- `action_type`.
+- `idempotency_key`.
+- `priority`.
+- `attempt_count`.
+- `lease_until`.
+- `status`.
+- `last_error`.
+- `created_at`, `started_at`, `finished_at`.
+
+Worker pools:
+
+- `ingest`: normalize and store events.
+- `router`: dispatch events to agents.
+- `actions`: execute Shopee, Telegram, and file side effects.
+- `sync`: polling and reconciliation.
+- `reports`: Excel generation and scheduled recaps.
+- `llm`: classification, summaries, and drafts.
+
+Queue priorities:
+
+1. Safety-critical alerts and auth failures.
+2. High-risk customer escalations.
+3. Order/logistics actions.
+4. Medium-risk approvals.
+5. Reconciliation.
+6. Reports and exports.
+7. Low-priority knowledge refresh.
+
+### State and Concurrency Rules
+
+- Use idempotency keys for every external action.
+- Use leases for queued work so crashed workers can recover.
+- Use per-order and per-conversation locks to avoid conflicting actions.
+- Do not run two customer replies for the same conversation at once.
+- Do not generate two labels for the same order/action key.
+- Do not block event ingestion while reports or LLM calls run.
+- Store every agent decision before executing side effects.
+
+### Agent Orchestration
+
+Agents should run as deterministic pipelines where possible:
+
+```text
+Context Build -> Rule Checks -> LLM Assist if needed -> Policy Gate -> Action Request -> Audit
+```
+
+LLM output is advisory unless the policy marks the action as low-risk and auto-send eligible. Rule checks and policy gates always win over LLM suggestions.
+
+### Tuning Loops
+
+The system should improve through measured feedback:
+
+- operator override tracking.
+- false auto-reply incident tagging.
+- approval latency tracking.
+- escalation reason analysis.
+- product knowledge gap count.
+- stale product fact count.
+- settlement mismatch patterns.
+- repeated Shopee API error clustering.
+
+Tuning artifacts:
+
+- policy matrix version.
+- prompt version.
+- product knowledge version.
+- report query version.
+- simulator scenario version.
+
+Every autonomous decision should record the versions it used. This makes later audits possible.
+
+### Audit and Optimization Workflow
+
+Run scheduled audits:
+
+- daily safety audit: auto-sent chats, high-risk detections, failed actions.
+- daily data audit: stale products, missing SKU mappings, sync drift, partial reports.
+- weekly policy audit: overrides, escalations, false positives, false negatives.
+- weekly finance audit: settlement mismatches and unresolved anomalies.
+- weekly performance audit: queue latency, API error rates, report generation time, slow DB queries.
+
+Optimization rules:
+
+- optimize noisy alerts before adding more alert types.
+- improve product knowledge before expanding auto-reply scope.
+- improve simulator coverage before enabling new auto-actions.
+- tune thresholds from operator corrections, not intuition alone.
+- keep high-risk actions human-gated even if model confidence is high.
+
+### Quality Gates
+
+Before enabling an automation in production:
+
+- simulator scenario passes.
+- idempotency test passes.
+- policy matrix test passes.
+- audit fields are populated.
+- Telegram approval/fallback path works.
+- failure mode is defined.
+- rollback or pause path exists.
+
+No agent is considered production-ready until it has a replayable test set and an operator override path.
+
+### Performance Targets
+
+Initial targets:
+
+- Telegram callback acknowledgement: under 2 seconds.
+- Event ingestion acknowledgement: under 1 second after signature validation and event write.
+- Low-risk chat decision: under 10 seconds if no API outage.
+- Label generation action: under 30 seconds excluding Shopee-side delay.
+- Daily Excel report generation: under 60 seconds for one shop's normal daily volume.
+- Health command response: under 3 seconds from local state.
+
+These are tuning targets, not hard guarantees. The system should alert when it misses them repeatedly.
 
 ## Security
 
@@ -473,6 +783,12 @@ Minimum metrics:
 - false or corrected auto-reply count.
 - finance mismatch count.
 - shipping document generation success and failure.
+- Telegram callback acknowledgement latency.
+- queue backlog and age by worker pool.
+- report generation duration.
+- product knowledge freshness and gap count.
+- operator override rate by policy version.
+- auto-action error rate by action type.
 
 Telegram commands:
 
@@ -502,6 +818,11 @@ Required tests:
 - Excel report generation tests.
 - product knowledge freshness and fallback tests.
 - customer dynamics state transition tests.
+- Telegram menu and callback idempotency tests.
+- alert severity routing tests.
+- work queue lease and retry tests.
+- per-order and per-conversation lock tests.
+- audit/version stamping tests.
 - failure injection for duplicate webhook, API timeout, token expiry, database retry, and LLM timeout.
 
 Simulator scenarios:
@@ -532,6 +853,8 @@ Simulator scenarios:
 - Ingress routes.
 - Event router.
 - Telegram bot with health, alerts, and approvals.
+- Telegram menu, action card, callback idempotency, roles, and alert severity.
+- Database-backed work queue with leases, priorities, and retry handling.
 - Order, logistics, and finance skeleton agents.
 - Reporting Agent with daily summary and Excel writer.
 - Product Knowledge Base schema and import/sync skeleton.
@@ -549,6 +872,7 @@ Simulator scenarios:
 - Reconciliation jobs.
 - Dead-letter replay.
 - Daily Telegram summaries.
+- Production audit jobs for safety, data freshness, and queue health.
 
 ### Phase 3: Customer Chat Automation
 
@@ -561,6 +885,7 @@ Simulator scenarios:
 - Medium-risk Telegram approval.
 - Conversation state machine.
 - Override feedback tracking.
+- Prompt, policy, and threshold tuning loop.
 
 ### Phase 4: Returns, Disputes, Inventory, and Learning Loop
 
@@ -572,6 +897,7 @@ Simulator scenarios:
 - Operator correction feedback.
 - Risk threshold tuning.
 - Migration path to PostgreSQL if volume requires it.
+- Performance optimization based on real queue, API, report, and operator latency data.
 
 ## Out of Scope for Initial Build
 
@@ -591,6 +917,7 @@ Simulator scenarios:
 - The system should start in conservative mode, then enable specific auto-actions after policy tests and simulator replay pass.
 - Excel exports should be generated from local snapshots and should not block core event processing.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
+- "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
 
 ## Acceptance Criteria
 
@@ -603,6 +930,9 @@ The design is ready for implementation planning when:
 - Telegram can request and receive Excel recap files.
 - the agent can answer product questions only when product knowledge is present and fresh.
 - the agent can detect customer mood, topic shifts, and escalation risk.
+- Telegram control flows are usable through menus and inline action cards.
+- every automation has audit/version records, quality gates, and a pause or fallback path.
+- queue workers can recover leased work without duplicate external side effects.
 - simulator can replay core workflows without Shopee credentials.
 - real Shopee integration can be added behind gateway interfaces.
 - tests cover idempotency, policy decisions, replay, and provider failure paths.
