@@ -34,6 +34,7 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - Database correctness scope: database design must minimize missed, duplicated, stale, or unreconciled records through constraints, idempotency keys, indexes, watermarks, audits, and repair workflows.
 - Memory and learning scope: the agent must retain operational context, product knowledge, customer state, policies, and operator corrections through versioned memory and supervised learning loops.
 - Production hardening scope: every risky capability must be behind feature flags, capability discovery, runbooks, SLOs, incident records, and staged rollout gates.
+- Smart engine scope: the backend must make context-aware, policy-bounded decisions through deterministic state machines, rule evaluation, LLM-assisted classification/drafting, simulation, backtesting, and supervised learning.
 
 ## Shopee API Capability Map
 
@@ -125,6 +126,8 @@ Event Router
         +--> Product Knowledge Agent
         +--> Operations Supervisor Agent
         +--> Memory and Learning Agent
+        +--> Decision Intelligence Engine
+        +--> Workflow Orchestrator
         +--> Chat Agent
         +--> Return/Dispute Agent
         +--> Sync/Recovery Agent
@@ -446,6 +449,183 @@ Event Store is the append-first audit layer. It stores raw payloads, normalized 
 ### Event Router
 
 Event Router maps normalized events to one or more specialist agents. A single order event can trigger order state updates, stock reservation, finance ledger updates, label eligibility checks, and Telegram notifications.
+
+### Workflow Orchestrator
+
+Workflow Orchestrator coordinates multi-step workflows without hiding business logic. It is a deterministic state machine runner, not an opaque agent framework.
+
+Workflow examples:
+
+- order intake to label-ready.
+- label generation to print-ready.
+- chat message to auto-reply or approval.
+- return/dispute case to evidence checklist.
+- daily audit workbook generation.
+- product knowledge gap to operator note approval.
+- finance mismatch to reconciliation and export.
+
+Workflow properties:
+
+- explicit state.
+- typed inputs and outputs.
+- idempotent steps.
+- resumable after crash.
+- timeout and compensation behavior.
+- policy checks before side effects.
+- audit log per transition.
+
+Workflow definition shape:
+
+```text
+WorkflowDefinition
+- workflow_type
+- version
+- states
+- transitions
+- entry_events
+- step_handlers
+- policy_gates
+- retry_policy
+- timeout_policy
+- compensation_steps
+- terminal_states
+```
+
+The orchestrator should store workflow instances in the database. It should never depend on in-memory process state for correctness.
+
+### Decision Intelligence Engine
+
+Decision Intelligence Engine turns context into structured decisions. It combines deterministic rules, state machines, scores, historical memory, and LLM assistance where useful.
+
+Inputs:
+
+- normalized event.
+- current domain snapshot.
+- source API facts.
+- product/customer/policy memory.
+- feature flags and capability state.
+- recent operator feedback.
+- risk model signals.
+- dependency health.
+
+Outputs:
+
+- typed `Decision`.
+- confidence and risk tier.
+- reason codes.
+- evidence references.
+- proposed action request.
+- required approval state.
+- follow-up task if blocked.
+
+Decision pipeline:
+
+```text
+Context Assembly
+-> Data Freshness Check
+-> Deterministic Rules
+-> State Machine Evaluation
+-> Risk Scoring
+-> LLM Assist if needed
+-> Policy Gate
+-> Feature Flag Gate
+-> Action/Task Proposal
+-> Audit Record
+```
+
+LLM assistance is allowed for:
+
+- intent classification.
+- sentiment and urgency classification.
+- response drafting.
+- summarization.
+- anomaly explanation drafts.
+- product FAQ suggestion drafts.
+
+LLM assistance is not allowed as final authority for:
+
+- refunds.
+- disputes.
+- compensation.
+- cancellation approval.
+- finance values.
+- stock truth.
+- price truth.
+- Shopee action eligibility.
+
+### Context Assembly Service
+
+Context Assembly Service builds the smallest sufficient context for a decision. It prevents both amnesia and prompt bloat.
+
+Context layers:
+
+- event payload.
+- local snapshot.
+- fresh provider facts when required.
+- product knowledge.
+- customer memory.
+- conversation state.
+- shop policy.
+- capability and feature flag state.
+- recent related decisions.
+- known incidents/degraded dependencies.
+
+Every context bundle should record:
+
+- context id.
+- source records.
+- freshness timestamps.
+- omitted data categories.
+- conflict warnings.
+- size/token estimate for LLM-bound tasks.
+
+If required context is stale or missing, the engine should produce `needs_context_refresh`, `needs_operator_input`, or `escalate`, not guess.
+
+### Risk and Confidence Engine
+
+Risk and confidence should be explicit, versioned, and testable.
+
+Risk signals:
+
+- customer mood and escalation language.
+- order value.
+- shipping delay.
+- return/refund/dispute keywords.
+- product knowledge freshness.
+- policy conflict.
+- finance mismatch.
+- provider degradation.
+- repeated failed actions.
+- operator override history.
+
+Confidence signals:
+
+- classifier confidence.
+- exact policy match.
+- freshness of source facts.
+- product match ambiguity.
+- customer/order linkage confidence.
+- LLM schema validity.
+- historical false-positive rate for the same intent/action.
+
+Risk and confidence thresholds live in `policy_versions`, not prompts.
+
+### Smart Agent Contract
+
+The system is a smart agent only if it can explain and replay its decisions.
+
+Every autonomous or recommended decision must answer:
+
+- What event triggered this?
+- What state did it read?
+- What facts were fresh or stale?
+- What rules matched?
+- What memory influenced the decision?
+- Was LLM used? If yes, for which bounded task?
+- What policy and feature flag allowed or blocked it?
+- What action was proposed?
+- What would happen if the action failed?
+- How can an operator override or replay it?
 
 ### Policy Engine
 
@@ -924,6 +1104,13 @@ Core tables:
 | `feature_registry` | Realness-gate records for each feature, source of truth, permissions, fallback, tests, owner, and rollout flag. |
 | `dependency_inventory` | Approved runtime dependencies, version pins, rationale, license, and replacement/removal notes. |
 | `architecture_decisions` | ADR metadata for major boundary, storage, provider, and deployment decisions. |
+| `workflow_definitions` | Versioned workflow state machines, transitions, retry, timeout, and compensation rules. |
+| `workflow_instances` | Running/completed workflow state, current step, lock, input event, and terminal result. |
+| `decision_records` | Full decision audit with context id, rule matches, risk/confidence, policy version, LLM usage, and outcome. |
+| `context_bundles` | Source records, freshness, conflicts, and context used for each decision. |
+| `risk_scores` | Versioned risk/confidence signal values and aggregate results by subject. |
+| `model_evaluations` | LLM classifier/drafter evaluation results, schema compliance, and regression scores. |
+| `simulation_runs` | Replay/backtest batches, scenario versions, outputs, mismatches, and approval status. |
 | `tokens` | Token state, expiry, refresh status, and shop binding. |
 | `sync_state` | Polling cursors, last successful sync, and drift markers. |
 | `operator_audit` | Telegram approvals, overrides, and manual commands. |
@@ -1620,6 +1807,68 @@ Context Build -> Rule Checks -> LLM Assist if needed -> Policy Gate -> Action Re
 
 LLM output is advisory unless the policy marks the action as low-risk and auto-send eligible. Rule checks and policy gates always win over LLM suggestions.
 
+### Simulation, Replay, and Backtesting Engine
+
+The backend must be able to test smart behavior before production rollout.
+
+Simulation modes:
+
+- `unit`: one event into one decision.
+- `workflow`: multi-step state machine replay.
+- `day_replay`: replay a realistic day of orders, chats, labels, finance, and stock events.
+- `incident_replay`: replay known failure patterns.
+- `shadow_compare`: compare old policy/prompt/threshold against a proposed version.
+
+Replay inputs:
+
+- stored events.
+- simulator fixtures.
+- anonymized production samples.
+- manually curated edge cases.
+- operator incident tags.
+
+Replay outputs:
+
+- decisions.
+- action proposals.
+- policy blocks.
+- expected vs actual outcomes.
+- auto-send/escalation deltas.
+- false positive and false negative candidates.
+- latency estimates.
+- data freshness warnings.
+
+Promotion rules:
+
+- no prompt/policy/risk threshold change can move to production without a passing replay set.
+- every new auto-action needs at least one success, duplicate, timeout, stale data, and provider failure scenario.
+- high-risk workflows can use simulation for recommendation quality but still remain supervised.
+
+### Smart Routing and Degradation
+
+The engine should route work based on risk, capability, and dependency health:
+
+- If Shopee API is degraded, stop write actions and keep local monitoring plus Telegram tasks.
+- If LLM is degraded, continue deterministic rules and templates; route medium/high chat to approval.
+- If product knowledge is stale, block product-specific auto-replies.
+- If database quality checks fail, pause affected automation lanes.
+- If Telegram delivery is degraded, keep processing events but mark operator notification risk.
+- If report generation is slow, move it behind lower-priority queue and preserve core operations.
+
+### Action Planning Without Hallucination
+
+For multi-step tasks, the engine may generate a plan only from registered capabilities and workflows.
+
+Allowed plan steps must reference:
+
+- a known workflow definition.
+- a known action type.
+- a feature flag.
+- a policy rule.
+- a provider capability or local-only action.
+
+If a requested action is not in the registry, the engine should answer with `unsupported_capability` and create a product backlog item, not invent an integration.
+
 ### Tuning Loops
 
 The system should improve through measured feedback:
@@ -1933,6 +2182,10 @@ Telegram commands:
 - `/flag set <capability> <state>`: owner-only rollout change with confirmation.
 - `/incidents`: show open incidents and runbooks.
 - `/runbook <name>`: open a guided incident response checklist.
+- `/why <decision_id>`: explain a decision with context, rules, memory, policy, feature flag, LLM usage, and action path.
+- `/simulate <scenario>`: owner-only simulator run for a named scenario.
+- `/replay decision <decision_id>`: replay one decision under current or proposed policy.
+- `/workflow <subject>`: show workflow state and next possible transitions.
 - `/db health`: show database size, WAL size, lock count, slow queries, backup status, and integrity check status.
 - `/sync audit`: show reconciliation coverage, drift count, cursor lag, and latest repair actions.
 - `/repair <subject>`: owner-only guided repair for refetch/replay/rebuild actions.
@@ -2001,6 +2254,14 @@ Required tests:
 - ports/adapters fake implementation tests.
 - feature vertical-slice completeness tests.
 - ADR presence tests for major architectural decisions.
+- workflow state machine tests.
+- workflow resume-after-crash tests.
+- decision explanation tests.
+- context assembly freshness and conflict tests.
+- risk/confidence scoring tests.
+- simulation and backtest tests.
+- unsupported capability planning tests.
+- degradation routing tests.
 - database uniqueness and foreign key tests.
 - outbox idempotency recovery tests.
 - reconciliation watermark tests.
@@ -2047,6 +2308,11 @@ Simulator scenarios:
 - domain module imports provider adapter and boundary test fails.
 - feature missing Telegram/operator path cannot leave simulator.
 - architecture decision without ADR blocks implementation plan approval.
+- stale product context blocks auto-reply and produces explanation.
+- LLM outage routes chat to template or approval fallback.
+- proposed prompt version fails shadow comparison.
+- unknown requested action becomes unsupported capability, not invented workflow.
+- workflow resumes after crash without duplicate side effect.
 - missed webhook repaired by overlapping polling.
 - duplicate provider update deduped by checksum.
 - outbox crash after provider send.
@@ -2071,6 +2337,7 @@ Simulator scenarios:
 - Project scaffold.
 - Database schema and migrations.
 - Event store and idempotency.
+- Workflow Orchestrator, Decision Intelligence Engine, Context Assembly, and Risk/Confidence Engine skeletons.
 - Shopee gateway interface with simulator implementation.
 - Token manager interface.
 - Ingress routes.
@@ -2091,11 +2358,13 @@ Simulator scenarios:
 - Shipping document action in dry-run/simulator mode.
 - Print and Document Agent with archive, batch bundle, and Telegram delivery in simulator mode.
 - Test harness and simulator fixtures.
+- `/why`, `/workflow`, and basic simulator/replay commands.
 
 ### Phase 2: Shopee Production Integration
 
 - Real signed Shopee client.
 - Capability discovery against authorized Shopee shop.
+- Shadow-mode decision capture against real events.
 - Token refresh persistence.
 - Real order detail and order list sync.
 - Real logistics document generation.
@@ -2121,6 +2390,7 @@ Simulator scenarios:
 - FAQ and policy retrieval.
 - Product-aware response retrieval.
 - Customer dynamics state machine.
+- Decision explanation and replay for chat approvals.
 - Low-risk auto-send.
 - Medium-risk Telegram approval.
 - Conversation state machine.
@@ -2141,6 +2411,7 @@ Simulator scenarios:
 - Operator correction feedback.
 - Risk threshold tuning.
 - Supervised self-learning from operator feedback with regression evaluation.
+- Backtesting of policy, prompt, and threshold changes before promotion.
 - Migration path to PostgreSQL if volume requires it.
 - Performance optimization based on real queue, API, report, and operator latency data.
 - PostgreSQL migration readiness review if SQLite contention or report load exceeds thresholds.
@@ -2182,6 +2453,8 @@ Simulator scenarios:
 - Every feature must pass the realness gate before implementation. If it cannot name a source of truth and official write path, it is a simulator-only idea.
 - Module boundaries must be enforceable through tests or static checks. Domain modules must not import provider adapters or entrypoint frameworks.
 - Prefer vertical slices over horizontal partial implementations. A half-built provider call without policy, Telegram UX, tests, and fallback is not complete.
+- Smart behavior must be explainable and replayable. If a decision cannot produce `/why` evidence, it cannot auto-execute.
+- The engine may plan only over registered workflows and capabilities. Unknown actions become backlog items, not invented integrations.
 - Privacy redaction must be verified before Telegram cards include customer/order details.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
@@ -2213,6 +2486,8 @@ The design is ready for implementation planning when:
 - every implemented feature has a real source of truth, approved dependency path, tests, fallback, and rollout flag.
 - architecture boundaries are documented, enforced, and covered by dependency/import tests.
 - major architecture decisions have ADRs.
+- decision records, context bundles, workflow state, and risk/confidence scores make smart-agent behavior explainable and replayable.
+- simulator/backtest runs gate policy, prompt, threshold, and auto-action promotion.
 - privacy redaction, incident runbooks, and SLO/error-budget monitoring are implemented.
 - backup and restore smoke tests pass before production operation.
 - simulator can replay core workflows without Shopee credentials.
