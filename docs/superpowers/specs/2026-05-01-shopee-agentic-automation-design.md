@@ -32,6 +32,7 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - Operator replacement scope: the bot should cover the routine Seller Center checks that force operators to open Shopee repeatedly, while keeping high-risk changes supervised from Telegram.
 - Telegram scalability scope: the bot must stay usable as features grow, using role-aware routing, pagination, deduped alerts, digesting, search, and task state instead of dumping every event into chat.
 - Database correctness scope: database design must minimize missed, duplicated, stale, or unreconciled records through constraints, idempotency keys, indexes, watermarks, audits, and repair workflows.
+- Memory and learning scope: the agent must retain operational context, product knowledge, customer state, policies, and operator corrections through versioned memory and supervised learning loops.
 
 ## Shopee API Capability Map
 
@@ -120,6 +121,7 @@ Event Router
         +--> Reporting Agent
         +--> Product Knowledge Agent
         +--> Operations Supervisor Agent
+        +--> Memory and Learning Agent
         +--> Chat Agent
         +--> Return/Dispute Agent
         +--> Sync/Recovery Agent
@@ -443,6 +445,76 @@ OperatorTask
 
 The task queue becomes the Telegram home screen for daily operations.
 
+### Memory and Learning Agent
+
+Memory and Learning Agent prevents the system from forgetting operational context and turns operator feedback into controlled improvements. It does not silently rewrite production policy or prompts. It proposes changes, tests them, versions them, and requires approval for behavior changes.
+
+Memory domains:
+
+- product memory: facts, aliases, FAQ, approved claims, constraints, common objections, and packaging notes.
+- customer memory: order history, sentiment trajectory, unresolved promises, complaint patterns, and human-only status.
+- policy memory: shop policies, forbidden claims, escalation rules, tone rules, and approval thresholds.
+- operations memory: recurring fulfillment issues, courier quirks, SKU mapping problems, packing notes, and settlement anomalies.
+- prompt memory: prompt versions, structured output schemas, model/provider configuration, and known failure cases.
+- report memory: export templates, query versions, workbook warnings, and reconciliation assumptions.
+
+Memory must be source-attributed. Every memory item needs:
+
+```text
+memory_id
+domain
+subject_id
+content
+source_type: shopee_api | operator_note | telegram_feedback | import | system_observation | policy_doc
+source_ref
+confidence
+status: candidate | approved | deprecated | rejected
+version
+effective_from
+expires_at
+created_by
+approved_by
+last_used_at
+```
+
+Learning sources:
+
+- operator edits to chat drafts.
+- operator approve/reject/escalate actions.
+- false auto-reply incident tags.
+- manual product notes.
+- repeated customer questions.
+- settlement anomaly resolution notes.
+- packing/label issue reasons.
+- Shopee API reconciliation drift patterns.
+- report corrections.
+
+Learning workflow:
+
+```text
+Observation
+-> Candidate memory or tuning proposal
+-> Deduplicate against existing memory
+-> Score confidence and impact
+-> Test against simulator/regression set
+-> Present Telegram approval if behavior changes
+-> Promote to approved memory/policy/prompt version
+-> Monitor post-change outcomes
+```
+
+The system can learn automatically only in low-risk memory domains, such as adding a product alias from repeated operator-approved usage. Anything that changes customer-facing policy, refund language, pricing, compensation, returns, dispute handling, finance thresholds, or auto-send scope requires human approval.
+
+For chat, retrieval must combine:
+
+- current order context.
+- product memory.
+- customer memory.
+- policy memory.
+- conversation state.
+- latest operator notes.
+
+If memory conflicts, the system should prefer the newest approved policy, then approved product facts, then current Shopee API facts, then operator notes. Candidate memory is never enough for autonomous replies.
+
 ### Chat Agent
 
 Chat Agent classifies intent, sentiment, risk, urgency, and confidence. It retrieves relevant order, tracking, product, FAQ, and policy context. It proposes either a template response, LLM-assisted draft, approval request, or escalation.
@@ -552,6 +624,13 @@ Core tables:
 | `promotion_state` | Voucher, discount, bundle, add-on, top-pick, and follow-prize snapshots where permission allows. |
 | `listing_health` | Product listing gaps, stale facts, price anomalies, stock sync issues, and missing attributes. |
 | `customer_memory` | Buyer context, unresolved promises, sentiment trajectory, and operator notes. |
+| `memory_items` | Versioned long-term memory records with source attribution, confidence, status, and expiry. |
+| `memory_links` | Relationships between memory items and products, customers, orders, policies, prompts, and reports. |
+| `learning_observations` | Raw observations from operator feedback, incidents, repeated questions, and system outcomes. |
+| `learning_proposals` | Candidate changes to memory, policy, prompts, thresholds, templates, or report logic. |
+| `evaluation_runs` | Regression/backtest results for proposed learning changes before promotion. |
+| `prompt_versions` | Prompt text, schema, model/provider config, eval score, and approval state. |
+| `policy_versions` | Policy matrix versions, threshold changes, approval state, and rollout metadata. |
 | `reconciliation_runs` | Sync run metadata, source watermarks, drift counts, repair actions, and status. |
 | `data_quality_checks` | Check definitions, latest result, severity, affected rows, and repair hints. |
 | `entity_versions` | Latest version/hash per order, product, shipment, settlement, conversation, and return case. |
@@ -1219,6 +1298,57 @@ Tuning artifacts:
 
 Every autonomous decision should record the versions it used. This makes later audits possible.
 
+### Memory Retention and Self-Learning
+
+The agent must not rely on chat history alone. It needs durable, queryable memory with explicit lifecycle states.
+
+Memory lifecycle:
+
+```text
+candidate -> approved -> active -> deprecated
+candidate -> rejected
+active -> expired
+```
+
+Retention rules:
+
+- Order and finance facts are retained according to business audit needs.
+- Product and policy memory persists until replaced or deprecated.
+- Customer memory persists only when operationally useful and should avoid storing unnecessary sensitive data.
+- Temporary conversation context can expire after the case is resolved.
+- Candidate memory expires if not approved or used within a configured period.
+
+Learning controls:
+
+- Candidate memories can be created automatically.
+- Approved memories that affect customer-facing behavior require owner/operator approval.
+- Prompt and policy changes require evaluation before promotion.
+- Threshold changes require before/after metrics.
+- Every production decision records memory, prompt, and policy version ids.
+- Rollback must be possible by reverting active versions.
+
+Evaluation requirements:
+
+- run candidate prompt/policy changes against a regression set of past chats and edge cases.
+- compare auto-send rate, escalation rate, false-positive risk, and policy violations.
+- block promotion if high-risk behavior increases.
+- store evaluation result in `evaluation_runs`.
+
+Telegram learning UX:
+
+- `/memory product <sku>` shows approved product memory and gaps.
+- `/memory customer <id>` shows operational customer context and unresolved promises.
+- `/learn review` shows candidate memories and tuning proposals.
+- `/learn approve <proposal_id>` promotes a tested proposal.
+- `/learn reject <proposal_id>` rejects it with reason.
+- `/learn rollback <version_id>` reverts a policy, prompt, or memory version where supported.
+
+Self-learning boundaries:
+
+- allowed without approval: low-risk aliases, FAQ suggestions, report note suggestions, anomaly clustering.
+- approval required: response templates, product claims, policy rules, thresholds, auto-send scope, finance assumptions.
+- never autonomous: refund/dispute decisions, compensation promises, cancellation approvals, high-risk customer handling.
+
 ### Audit and Optimization Workflow
 
 Run scheduled audits:
@@ -1333,6 +1463,12 @@ Telegram commands:
 - `/products gaps`: show product knowledge and listing hygiene gaps.
 - `/promos`: show active promos, ending promos, and margin warnings when data is available.
 - `/customers sensitive`: show conversations/customers in sensitive or human-only mode.
+- `/memory product <sku>`: show approved product facts, aliases, FAQ, constraints, and gaps.
+- `/memory customer <id>`: show operational customer context, unresolved promises, and human-only status.
+- `/learn review`: show candidate memories and tuning proposals.
+- `/learn approve <proposal_id>`: promote a tested learning proposal.
+- `/learn reject <proposal_id>`: reject a learning proposal with reason.
+- `/learn rollback <version_id>`: revert supported memory, policy, or prompt versions.
 - `/db health`: show database size, WAL size, lock count, slow queries, backup status, and integrity check status.
 - `/sync audit`: show reconciliation coverage, drift count, cursor lag, and latest repair actions.
 - `/repair <subject>`: owner-only guided repair for refetch/replay/rebuild actions.
@@ -1380,6 +1516,11 @@ Required tests:
 - product listing hygiene tests.
 - promotion margin warning tests.
 - `/find` lookup tests across order, SKU, product alias, customer, and task.
+- memory creation, approval, expiry, and rollback tests.
+- learning proposal dedupe tests.
+- prompt/policy version evaluation tests.
+- customer memory privacy/minimization tests.
+- retrieval precedence tests for conflicting memory.
 - database uniqueness and foreign key tests.
 - outbox idempotency recovery tests.
 - reconciliation watermark tests.
@@ -1411,6 +1552,10 @@ Simulator scenarios:
 - product listing missing weight or stale stock.
 - promo margin below threshold.
 - account health penalty alert.
+- operator edits chat draft and creates learning proposal.
+- repeated product alias becomes candidate memory.
+- conflicting product memory blocked from auto-reply.
+- prompt version fails regression and cannot be promoted.
 - missed webhook repaired by overlapping polling.
 - duplicate provider update deduped by checksum.
 - outbox crash after provider send.
@@ -1445,6 +1590,7 @@ Simulator scenarios:
 - Database correctness layer with constraints, outbox, inbox offsets, reconciliation runs, and data quality checks.
 - Order, logistics, and finance skeleton agents.
 - Operations Supervisor Agent with agenda, inbox, SLA watch, and `/find` lookup in simulator mode.
+- Memory and Learning Agent with candidate memory, approval workflow, and version tables.
 - Reporting Agent with daily summary and Excel writer.
 - Shopee monthly audit workbook template adapter for `auditshopeedef.xlsx`.
 - Product Knowledge Base schema and import/sync skeleton.
@@ -1485,6 +1631,7 @@ Simulator scenarios:
 - Override feedback tracking.
 - Prompt, policy, and threshold tuning loop.
 - Customer memory and unresolved promise tracking.
+- Memory retrieval in Chat Agent with source attribution and conflict handling.
 
 ### Phase 4: Returns, Disputes, Inventory, and Learning Loop
 
@@ -1497,6 +1644,7 @@ Simulator scenarios:
 - Finance anomaly tuning.
 - Operator correction feedback.
 - Risk threshold tuning.
+- Supervised self-learning from operator feedback with regression evaluation.
 - Migration path to PostgreSQL if volume requires it.
 - Performance optimization based on real queue, API, report, and operator latency data.
 - PostgreSQL migration readiness review if SQLite contention or report load exceeds thresholds.
@@ -1526,6 +1674,8 @@ Simulator scenarios:
 - Seller Center replacement should prioritize visibility and supervised actions first. Do not add autonomous write actions until the read/alert/approval loop is reliable.
 - No cursor, watermark, or offset should advance until its source data and derived state are committed or safely queued for processing.
 - Database tuning must be evidence-driven from lock counts, query latency, drift counts, and backup/restore tests.
+- Memory is not truth unless it is source-attributed and approved for the intended use. Candidate memory must not drive autonomous customer-facing actions.
+- Self-learning must improve proposals and retrieval. It must not silently change high-risk behavior.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
 
@@ -1549,6 +1699,8 @@ The design is ready for implementation planning when:
 - every automation has audit/version records, quality gates, and a pause or fallback path.
 - queue workers can recover leased work without duplicate external side effects.
 - database constraints and reconciliation jobs catch duplicate, missing, stale, and drifted records.
+- long-term memory is versioned, source-attributed, approved, and retrievable by product/customer/policy/report context.
+- learning proposals are evaluated and approved before changing production behavior.
 - backup and restore smoke tests pass before production operation.
 - simulator can replay core workflows without Shopee credentials.
 - real Shopee integration can be added behind gateway interfaces.
