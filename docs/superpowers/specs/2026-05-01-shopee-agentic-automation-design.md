@@ -23,6 +23,7 @@ The target is a VPS-hosted service with Telegram as the only operator interface.
 - LLM path: provider-agnostic adapter.
 - Logistics scope: auto-generate shipping documents for eligible orders; do not auto-ship full workflows in phase one.
 - Reporting scope: automatic Excel output for daily, weekly, monthly, order, finance, inventory, chat, and escalation recaps.
+- Shopee audit workbook scope: the recap engine must understand and fill the uploaded workbook shape from `/Users/aaa/Downloads/auditshopeedef.xlsx` with high precision.
 - Product intelligence scope: the agent must know product catalog details, variants, stock, pricing, policies, FAQ, product constraints, and approved selling points before it interacts with customers.
 - Customer dynamics scope: the agent must model conversation state, customer mood, urgency, risk, purchase context, and escalation triggers.
 - Telegram UX scope: Telegram must work as a proper control room with concise menus, action cards, inline approvals, health monitoring, exports, and safe operator workflows.
@@ -174,6 +175,90 @@ Initial report types:
 
 Excel files should include multiple sheets when useful, such as `summary`, `orders`, `items`, `finance`, `inventory`, `chats`, `escalations`, and `anomalies`. Each generated file must be recorded in an `exports` table with report type, time range, file path, checksum, creator, and source query version.
 
+### Shopee Audit Workbook Engine
+
+The uploaded example workbook `auditshopeedef.xlsx` defines a specific monthly audit format. The recap engine must support this format as a named report template, not as a one-off export.
+
+Observed template structure:
+
+- sheets: `jan`, `feb`, `mar`, `apr`, `may`, `jun`, `jul`, `aug`, `sep`, `oct`, `nov`, `dec`.
+- each month sheet uses columns `A:L`.
+- row 1 contains merged section headers:
+  - `A1:A2`: `NO`.
+  - `B1:D1`: `STATUS PESANAN`.
+  - `E1:F1`: `DETAIL PESANAN`.
+  - `G1:I1`: `BIAYA`.
+  - `J1:L1`: `LAIN-LAIN`.
+- row 2 contains field headers:
+  - `B`: `TERIMA`.
+  - `C`: `KIRIM`.
+  - `D`: `SELESAI`.
+  - `E`: `ORDER`.
+  - `F`: `NO PESANAN`.
+  - `G`: `PESANAN`.
+  - `H`: `ADMIN`.
+  - `I`: `JUMLAH`.
+  - `J`: `DANA DITERIMA`.
+  - `K`: `SELISIH`.
+  - `L`: `KETERANGAN`.
+- rows `3:202` are transaction rows.
+- row `203` is the total row.
+- normal transaction formulas:
+  - `Hn = Gn * admin_rate`.
+  - `In = Gn - Hn`.
+  - `Kn = Jn - In`.
+- total row formulas:
+  - `G203 = SUM(G3:G202)`.
+  - `H203 = G203 * total_admin_rate`.
+  - `I203 = G203 - H203`.
+  - `J203 = SUM(J3:J202)`.
+  - `K203 = J203 - I203`.
+  - `L203 = I203 - J203`.
+
+The example has a rate mismatch: transaction rows use `7.5%`, while the total admin row uses `8%`. The engine must not silently normalize this. It should store both rates in `report_templates`, surface the mismatch in a template audit warning, and allow the configured report version to either preserve the example exactly or use a corrected rate consistently.
+
+Column semantics:
+
+| Column | Meaning | Source mapping |
+| --- | --- | --- |
+| `A` | Sequential row number. | Generated per month. |
+| `B` | Date/time order was received or accepted. | Shopee order create/pay/ready timestamp, selected by config. |
+| `C` | Date/time order was shipped. | Shipment/logistics timestamp. |
+| `D` | Date/time order was completed. | Completed status timestamp. |
+| `E` | Order description or item summary. | Collapsed order item names, SKU summary, or configured order label. |
+| `F` | Shopee order number. | `order_sn`. |
+| `G` | Gross order amount. | Order total before admin deduction, from authoritative order/finance field. |
+| `H` | Admin fee. | Formula from configured admin rate unless authoritative fee field is mapped. |
+| `I` | Expected amount after admin. | Formula. |
+| `J` | Actual funds received. | Escrow/settlement/payout amount when available. |
+| `K` | Difference between actual and expected. | Formula. |
+| `L` | Notes. | Generated anomaly note, manual note, or reconciliation reason. |
+
+Precision requirements:
+
+- Preserve workbook layout: sheet names, merged headers, row heights, column widths, borders, fills, freeze panes, and number formats.
+- Preserve formulas unless the report version explicitly switches to value-only mode.
+- Write dates as real Excel dates, not strings, when source granularity allows it.
+- Write currency/amounts as numbers, not formatted text.
+- Keep formulas auditable and visible to operators.
+- Leave blank cells blank when no source field exists.
+- Add notes in `KETERANGAN` for partial data, missing settlement, stale sync, manual override, rate mismatch, or reconciliation drift.
+- Generate row count dynamically if a month has more than 200 transactions. If the template must remain fixed at 200 rows, overflow rows must go to an `overflow_<month>` sheet and trigger a Telegram warning.
+- Store one export metadata record per generated workbook, including template name, template version, source date range, source event watermark, formula mode, checksum, and warnings.
+
+Recommended internal template id:
+
+```text
+shopee_monthly_audit_v1
+```
+
+The engine should support two output modes:
+
+- `template_exact`: preserve the uploaded workbook's formulas and rates exactly, including the 7.5% row rate and 8% total rate.
+- `policy_corrected`: use configured policy rates consistently and record the difference from the original template.
+
+The default for production should be `policy_corrected` after the operator confirms the correct admin fee policy. Until then, generated audit workbooks should run in `template_exact` and show a warning.
+
 ### Product Knowledge Base
 
 Product Knowledge Base is the factual layer used by Chat Agent, Inventory Agent, Reporting Agent, and Telegram summaries. It combines Shopee product data with local seller knowledge.
@@ -313,6 +398,8 @@ Core tables:
 | `returns_disputes` | Case reason, evidence, recommendation, and decision state. |
 | `action_requests` | Pending, approved, rejected, and executed action payloads. |
 | `exports` | Generated report metadata, file paths, checksums, and source query versions. |
+| `report_templates` | Named Excel template schemas, column mappings, formula rules, style anchors, and versioned assumptions. |
+| `report_template_audits` | Template inconsistencies, rate mismatches, missing mappings, overflow warnings, and validation results. |
 | `work_queue` | Background jobs, leases, priorities, attempts, and recovery state. |
 | `alerts` | Open, acknowledged, snoozed, and resolved operator alerts. |
 | `telegram_callbacks` | Opaque callback ids, expiry, action binding, and execution status. |
@@ -798,6 +885,8 @@ Telegram commands:
 - `/export finance month`: create and send a finance workbook.
 - `/export inventory`: create and send an inventory workbook.
 - `/export chats`: create and send a chat automation workbook.
+- `/export audit month <month>`: create a workbook in the `auditshopeedef.xlsx` monthly audit shape.
+- `/export audit year`: create all month sheets in the Shopee monthly audit shape.
 - `/pause`: pause autonomous side effects.
 - `/resume`: resume autonomous side effects.
 - `/replay <event_id>`: replay an event when authorized.
@@ -816,6 +905,10 @@ Required tests:
 - reconciliation drift tests.
 - LLM structured output contract tests with mocked providers.
 - Excel report generation tests.
+- Shopee audit workbook template fill tests.
+- Shopee audit workbook formula and style preservation tests.
+- Shopee audit workbook row overflow tests.
+- report template rate mismatch warning tests.
 - product knowledge freshness and fallback tests.
 - customer dynamics state transition tests.
 - Telegram menu and callback idempotency tests.
@@ -857,6 +950,7 @@ Simulator scenarios:
 - Database-backed work queue with leases, priorities, and retry handling.
 - Order, logistics, and finance skeleton agents.
 - Reporting Agent with daily summary and Excel writer.
+- Shopee monthly audit workbook template adapter for `auditshopeedef.xlsx`.
 - Product Knowledge Base schema and import/sync skeleton.
 - Shipping document action in dry-run/simulator mode.
 - Test harness and simulator fixtures.
@@ -869,6 +963,7 @@ Simulator scenarios:
 - Real logistics document generation.
 - Product catalog and variant sync.
 - First production Excel reports from real order, item, finance, and inventory data.
+- First production Shopee monthly audit workbook from real order and settlement data.
 - Reconciliation jobs.
 - Dead-letter replay.
 - Daily Telegram summaries.
@@ -916,6 +1011,7 @@ Simulator scenarios:
 - The simulator should remain part of the permanent test suite, not a temporary scaffold.
 - The system should start in conservative mode, then enable specific auto-actions after policy tests and simulator replay pass.
 - Excel exports should be generated from local snapshots and should not block core event processing.
+- The `auditshopeedef.xlsx` report shape should be treated as a versioned business template. Do not hardcode column positions without a template schema and validation test.
 - Product knowledge must be treated as a safety dependency for customer-facing answers.
 - "Perfect" should mean audited, measured, recoverable, and continuously tuned. It must not mean fully autonomous decisions for high-risk cases.
 
@@ -928,6 +1024,8 @@ The design is ready for implementation planning when:
 - low, medium, and high risk paths are explicit.
 - Telegram can show action reason, evidence, approval buttons, and audit status.
 - Telegram can request and receive Excel recap files.
+- the system can generate a Shopee monthly audit workbook matching `auditshopeedef.xlsx` layout, formulas, and column semantics.
+- report generation flags the observed admin-rate mismatch instead of silently hiding it.
 - the agent can answer product questions only when product knowledge is present and fresh.
 - the agent can detect customer mood, topic shifts, and escalation risk.
 - Telegram control flows are usable through menus and inline action cards.
