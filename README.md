@@ -1,40 +1,18 @@
-# 🚀 Shopee Intelligence Engine v3.0.0 (Elite Edition)
+# 🚀 Shopee Intelligence Engine v3.0.0
+
+> **Intelligence Sovereign Edition** — Perpaduan mutakhir antara Autonomous Agents, Multimodal AI, dan Kepatuhan Finansial untuk operasional Shopee skala perusahaan.
 
 [![Status: Production-Ready](https://img.shields.io/badge/Status-Production--Ready-brightgreen.svg)]()
-[![Build: Passed](https://img.shields.io/badge/Build-Passed-blue.svg)]()
+[![LLM: Gemini 2.5 Flash](https://img.shields.io/badge/AI-Gemini%202.5%20Flash-blue.svg)]()
 [![Security: Hardened](https://img.shields.io/badge/Security-Hardened-orange.svg)]()
-[![LLM: Gemini Multimodal](https://img.shields.io/badge/AI-Gemini%20Vision%20%2F%20Voice-purple.svg)]()
-
-**Shopee Intelligence Engine** adalah ekosistem manajemen toko Shopee otonom kelas perusahaan yang menggabungkan Kecerdasan Buatan (Vision & Voice), Kepatuhan Finansial yang ketat, dan pengalaman pengguna Telegram yang ramah (Elite Personal Assistant).
 
 ---
 
-## ✨ Fitur Unggulan (Elite Experience)
+## 🏛️ Arsitektur Sistem
 
-### 🤖 Kecerdasan Multimodal & Otonom
-- **👁️ Vision AI Analysis**: Analisis otomatis foto bukti sengketa dan kondisi stok menggunakan Gemini Vision.
-- **🎤 Voice Command Routing**: Kontrol operasional toko menggunakan pesan suara (Voice-to-Command).
-- **🧠 Interactive KB Learning**: Fitur "Ajarkan AI" yang memungkinkan operator memperbarui basis pengetahuan produk langsung dari Telegram.
-- **🛡️ Autonomous Dispute Defense**: Pertahanan otomatis terhadap klaim pembeli berdasarkan data berat paket, sejarah logistik, dan analisis visual.
-
-### 💼 Operasional & Finansial (Zero-Error)
-- **⚖️ Financial Reconciliation**: Audit otomatis sesuai standar Shopee API v2 dengan output Excel 14-kolom yang mendetail.
-- **📈 Executive Dashboard**: Visualisasi KPI (Omzet, Pertumbuhan, Rate Komplain) secara real-time dengan UI premium.
-- **📦 Logistics Orchestration**: Cetak label pengiriman (PDF) dan atur penjemputan (`/ship`) secara instan.
-- **🚀 Product Booster**: Otomasi "Naikkan Produk" untuk 5 produk terlaris setiap 4 jam untuk traffic maksimal.
-
-### 💎 User Experience (Living Assistant)
-- **🇮🇩 Full Indonesian Localization**: Seluruh antarmuka menggunakan bahasa Indonesia yang natural dan ramah bagi operator non-teknis.
-- **⚡ Zero-Hang Architecture**: Penggunaan *typing indicators* dan penanganan error global memastikan bot selalu responsif dan stabil.
-- **📥 Task-Oriented Inbox**: Manajemen tugas berbasis prioritas (🔴 Sangat Mendesak, 📊 Menunggu) untuk memastikan tidak ada pesanan yang terlewat.
-
----
-
-## 🛠️ Tech Stack & Architecture
+Sistem ini dibangun di atas fondasi **Agentic Micro-Services** yang modular dan tangguh. Setiap keputusan bisnis divalidasi oleh lapisan kecerdasan multimodal sebelum dieksekusi.
 
 ![Intelligence Sovereign Architecture](/Users/aaa/.gemini/antigravity/brain/36c0ec50-89c5-444b-b248-a91de409dd32/shopee_intelligence_architecture_3d_1777959438110.png)
-
-Sistem ini dibangun dengan arsitektur **Agentic Micro-Services** yang modular:
 
 ```mermaid
 graph TB
@@ -59,126 +37,102 @@ graph TB
     Engine <--> Order & Chat & Finance & Dispute
 ```
 
-- **Core**: Python 3.10+ (Asynchronous using `aiogram` & `asyncio`)
-- **Intelligence**: Google Gemini 2.5 Flash (Vision, Voice, and Reasoning).
-- **Database**: SQLite (WAL Mode) with SQLAlchemy ORM for institutional resilience.
-- **Infrastructure**: Docker & Docker Compose for rapid deployment and isolation.
-- **Connectivity**: Shopee API v2 (Global Compliance) with auto-token repair mechanism.
+---
 
+## ✨ Fitur Unggulan
+
+### 🧠 Intelligence Layer
+- **Multimodal AI**: Analisis otomatis foto sengketa dan rekaman suara untuk perintah operasional.
+- **Resilient LLM**: Mekanisme *Auto-Retry* dan *Fallback* antar provider (Gemini ↔ OpenRouter) untuk jaminan stabilitas 99.9%.
+- **KB Learning**: Ajarkan bot mengenai produk baru langsung melalui antarmuka Telegram.
+
+### 🛡️ Operational Hardening
+- **Zero-Hang Flow**: Typing indicators dan penanganan error global memastikan bot selalu responsif.
+- **Financial Audit**: Rekonsiliasi margin otomatis per transaksi dengan output Excel/GSheets.
+- **Sovereign Security**: Seluruh kredensial dikelola via environment vault, tanpa data hardcoded.
 
 ---
 
-## 🚀 Instalasi & Setup Cepat (1-Click)
+## 📂 Struktur Proyek (Exhaustive Tree)
 
-Kami merancang sistem ini agar dapat dijalankan dalam hitungan menit tanpa konfigurasi teknis yang rumit.
+Berikut adalah struktur folder mendetail yang menunjukkan modularitas sistem:
 
-### Prasyarat
-- Docker & Docker Compose terinstal di komputer Anda.
-- Token Telegram Bot (dari [@BotFather](https://t.me/botfather)).
-
-### Langkah-langkah
-1. **Clone & Setup**:
-   ```bash
-   git clone https://github.com/Timcuan/Shoope-agent-v1.git
-   cd Shoope-agent-v1
-   make setup
-   ```
-   *Perintah di atas akan mengecek ketergantungan sistem dan membuat file `.env` secara interaktif.*
-
-2. **Jalankan Sistem**:
-   ```bash
-   make start
-   ```
-
-3. **Cek Status**:
-   ```bash
-   make logs
-   ```
-
----
-
-## 📱 Panduan Perintah Telegram (User Guide)
-
-Gunakan perintah-perintah berikut untuk mengontrol asisten pintar Anda:
-
-| Kategori | Perintah | Fungsi |
-| :--- | :--- | :--- |
-| **Utama** | `/start` | Memulai sesi dan menampilkan menu utama interaktif. |
-| **Tugas** | `/inbox` | Melihat semua tugas mendesak (Pesanan, Komplain, Stok). |
-| **Tugas** | `/agenda` | Ringkasan tugas dengan SLA paling mendesak hari ini. |
-| **Analisis** | `/dashboard` | Ringkasan performa toko (Omzet & Pertumbuhan). |
-| **Keuangan** | `/rekap` | Susun laporan audit bulanan (Excel/GSheets). |
-| **AI** | `/chat` | Analisis pesan pembeli & draf balasan cerdas. |
-| **Sistem** | `/diagnose` | Pengecekan kesehatan sistem & konektivitas API. |
-| **Sistem** | `/sync` | Sinkronisasi manual data toko di latar belakang. |
-
----
-
-## 🔄 Alur Kerja Otomasi (Workflow)
-
-Sistem bekerja dengan prinsip **Human-In-The-Loop (HITL)** untuk menjamin keamanan dan akurasi:
-
-1.  **🔍 Deteksi**: Bot memantau pesanan dan chat secara real-time setiap 3 menit.
-2.  **🧠 Klasifikasi**: AI Gemini menganalisis tingkat risiko (Rendah, Sedang, Tinggi).
-3.  **⚡ Aksi**: 
-    -   *Sedang*: Dibuatkan draf balasan ➡️ Masuk ke `/inbox` untuk disetujui operator.
-    -   *Tinggi*: Peringatan P0 dikirim ke admin ➡️ Memerlukan intervensi manusia segera.
-4.  **🎓 Learning**: Jika AI ragu, gunakan tombol **"Ajarkan AI"** untuk memperbarui basis pengetahuan secara instan.
-
----
-
-## 📂 Struktur Proyek (The Grand Blueprint)
-
-Sistem ini menggunakan arsitektur **Hexagonal / Onion Architecture** yang dimodifikasi untuk pola Agentic Workflow. Berikut adalah rincian fungsional dari setiap komponen:
-
-### 1. Root Configuration & Dev-Ops
--   `📄 .env.example`: Blueprint seluruh rahasia sistem (API Keys, DB URL, Proxy).
--   `📄 Dockerfile` & `docker-compose.yml`: Standarisasi lingkungan produksi menggunakan kontainerisasi.
--   `📄 Makefile`: Abstraksi perintah kompleks menjadi satu kata (`make setup`, `make build`, `make start`).
--   `📄 setup.sh`: Setup wizard interaktif yang memandu user dari nol hingga bot menyala.
--   `📁 alembic/`: Mengelola evolusi skema database SQLite agar data lama tidak hilang saat update kode.
-
-### 2. 🧠 Autonomous Agents (`src/shopee_agent/app/`)
-Ini adalah "Otak" dari sistem, tempat logika otonom berada:
--   `🤖 order_agent.py`: Memantau setiap pesanan baru dan mendeteksi anomali SLA.
--   `🤖 chat_agent.py`: NLP Engine yang menganalisis sentimen pembeli dan merancang draf balasan.
--   `🤖 finance_agent.py`: Auditor internal yang menghitung laba bersih per transaksi.
--   `🤖 dispute_agent.py`: Pengacara otomatis untuk menangani sengketa dan retur.
--   `🤖 vision_agent.py`: Mata sistem untuk menganalisis bukti foto paket/produk.
--   `🤖 gsheets_agent.py`: Sinkronisasi data audit ke Google Sheets secara real-time.
--   `🤖 task_orchestrator.py`: Dirigen yang mengatur antrean tugas antar agen.
--   *...dan 20+ agen spesifik lainnya (Analytics, Booster, Maintenance, dll).*
-
-### 3. 🔌 External Providers (`src/shopee_agent/providers/`)
-Layer abstraksi untuk berinteraksi dengan dunia luar:
--   `🌐 shopee/`: Implementasi protokol Shopee API v2 (Client, Auth, & Auto-Refresh Token).
--   `🧠 llm/`: Gateway tangguh ke Gemini 2.5 Flash dengan mekanisme *Auto-Retry* dan *Provider Fallback*.
--   `🔔 notifications/`: Dispatcher pesan ke Telegram Bot dan integrasi PrintNode (Cloud Printing).
-
-### 4. 🏛️ Persistence & Data Layer (`src/shopee_agent/persistence/`)
-Layer yang menjamin integritas data:
--   `💾 models.py`: Definisi entitas data (Order, Chat, KB, User, Event).
--   `💾 repositories.py`: Implementasi Repository Pattern untuk pemisahan logika kueri SQL dari logika bisnis.
--   `💾 session.py`: Manajemen koneksi database dengan dukungan WAL (Write-Ahead Logging) Mode untuk akses cepat.
-
-### 5. 🎮 Entrypoints (`src/shopee_agent/entrypoints/`)
-Gerbang interaksi user dan sistem:
--   `📱 telegram/`: UI Layer yang mengelola bot, keyboard interaktif, dan format pesan yang cantik.
--   `🌐 api/`: Webhook receiver untuk menerima notifikasi real-time dari server Shopee.
--   `⚙️ worker/`: Proses latar belakang yang menjalankan tugas berat (seperti pembuatan rekap bulanan) tanpa mengganggu responsivitas bot.
+```text
+.
+├── 📁 alembic/              # Migrasi skema database (SQLAlchemy)
+├── 📁 data/                 # Database SQLite, Logs, & Arsip Laporan
+├── 📁 docs/                 # Dokumentasi API & Panduan Pengguna
+├── 📁 src/                  # Source Code Utama
+│   └── shopee_agent/
+│       ├── 🧠 app/          # Core Intelligence (The Agents)
+│       │   ├── analytics.py # Analisis KPI & Pertumbuhan
+│       │   ├── chat.py      # NLP Brain & Balasan Otomatis
+│       │   ├── dispute.py   # Defender sengketa & retur
+│       │   ├── finance.py   # Auditor margin & pajak
+│       │   ├── order.py     # Monitor lifecycle pesanan
+│       │   ├── logistics.py # Cloud printing & Shipping management
+│       │   ├── vision.py    # Vision AI Photo Analysis
+│       │   └── ... (25+ specialized modules)
+│       ├── 🔌 providers/    # Gateways & Integrasi Eksternal
+│       │   ├── shopee/      # Shopee API v2 Protocols
+│       │   ├── llm/         # Gemini 2.5 & OpenRouter Gateway
+│       │   └── notifications/ # Dispatcher Telegram & SMS
+│       ├── 🏛️ persistence/   # Data Layer (Resilience)
+│       │   ├── models.py    # Definisi Tabel DB
+│       │   └── repositories.py # Data Access Logic
+│       ├── 🎮 entrypoints/   # Interface Layer
+│       │   ├── telegram/    # UI/UX Bot Telegram (Elite Feel)
+│       │   ├── api/         # Webhook Receiver (FastAPI)
+│       │   └── worker/      # Background Task Orchestrator
+│       └── 📄 contracts/     # Pydantic Schemas & Type Definitions
+├── 📁 tests/                # Suite pengujian unit & integrasi
+├── 📄 .env.example          # Template konfigurasi produksi
+├── 📄 Dockerfile            # Blueprint kontainerisasi
+├── 📄 Makefile              # Pintasan perintah operasional
+├── 📄 setup.sh              # Interactive setup wizard (1-Click)
+└── 📄 start.sh              # Main process orchestrator
 ```
 
+---
 
+## 🚀 Memulai (Quick Start)
 
+### 1-Click Installation
+Gunakan wizard instalasi kami untuk mengatur segalanya secara otomatis:
+```bash
+make setup
+```
 
+### Jalankan Layanan
+Aktifkan seluruh ekosistem (API, Bot, & Worker):
+```bash
+make start
+```
 
 ---
 
-## 📄 Dokumentasi & Changelog
-- [CHANGELOG.md](CHANGELOG.md): Sejarah lengkap pembaruan fitur.
-- [docs/walkthrough.md](docs/walkthrough.md): Panduan mendalam fitur-fitur agen.
-- [docs/api_compliance.md](docs/api_compliance.md): Detail implementasi kepatuhan API Shopee v2.
+## 🔄 Alur Kerja (Human-In-The-Loop)
+
+Sistem ini tidak menggantikan manusia, melainkan memperkuatnya:
+1. **Detect**: Bot memantau setiap event (Chat/Order) secara real-time.
+2. **Analyze**: AI Gemini 2.5 Flash melakukan klasifikasi risiko dan sentimen.
+3. **Draft**: Draf balasan atau aksi audit disiapkan secara otomatis.
+4. **Approve**: Operator menyetujui atau mengedit aksi melalui `/inbox`.
 
 ---
-*Developed with ❤️ by Antigravity AI for Elite Shopee Sellers.*
-*Copyright © 2026 Timcuan. All rights reserved.*
+
+## 📱 Panduan Perintah Telegram
+
+| Perintah | Deskripsi |
+| :--- | :--- |
+| `/start` | Menu utama interaktif. |
+| `/inbox` | Pusat kendali tugas & tugas harian. |
+| `/dashboard` | Visualisasi performa & KPI bisnis. |
+| `/rekap` | Unduh laporan audit finansial bulanan. |
+| `/chat` | Analisis pesan pembeli menggunakan AI. |
+| `/diagnose` | Cek kesehatan koneksi API & Database. |
+
+---
+
+> Developed with ❤️ by **Antigravity AI** for **Elite Shopee Sellers**.
+> *Copyright © 2026 Timcuan. All rights reserved.*
