@@ -1,0 +1,44 @@
+services:
+  shopee-api:
+    build: .
+    container_name: shopee-api
+    command: ["./start.sh", "api"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  shopee-bot:
+    build: .
+    container_name: shopee-bot
+    command: ["./start.sh", "bot"]
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - shopee-api
+
+  shopee-worker:
+    build: .
+    container_name: shopee-worker
+    command: ["./start.sh", "worker"]
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - shopee-api
+
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflare-tunnel
+    command: tunnel --url http://shopee-api:8000
+    restart: unless-stopped
+    depends_on:
+      - shopee-api

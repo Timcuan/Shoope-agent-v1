@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "active": true,
+  "skill": "code-review",
+  "keyword": "review code",
+  "phase": "planning",
+  "activated_at": "2026-05-01T15:20:53.877Z",
+  "updated_at": "2026-05-01T15:20:53.996Z",
+  "source": "keyword-detector",
+  "session_id": "019de420-d67d-7aa1-8384-ef4627f435b0",
+  "thread_id": "",
+  "turn_id": "019de420-d6d8-79c1-9108-8c82a1817d09",
+  "active_skills": [
+    {
+      "skill": "code-review",
+      "phase": "planning",
+      "active": true,
+      "activated_at": "2026-05-01T15:20:53.877Z",
+      "updated_at": "2026-05-01T15:20:53.996Z",
+      "session_id": "019de420-d67d-7aa1-8384-ef4627f435b0",
+      "thread_id": "",
+      "turn_id": "019de420-d6d8-79c1-9108-8c82a1817d09"
+    }
+  ]
+}

@@ -154,3 +154,22 @@ def test_decision_explain_includes_requires_human_and_action_request() -> None:
 
     assert "requires_human=True" in explanation
     assert "action_request=act-1/escalate" in explanation
+
+
+def test_decision_engine_records_low_risk_order_decision() -> None:
+    from shopee_agent.app.decisions import DecisionEngine
+    event = EventEnvelope(
+        source=EventSource.SIMULATOR,
+        event_type=EventType.ORDER_CREATED,
+        shop_id="shop-1",
+        source_event_id="evt-order-1",
+        payload={"order_sn": "250501ABC"},
+    )
+
+    decision = DecisionEngine(policy_version="policy-v1").decide(event)
+
+    assert decision.subject_id == "250501ABC"
+    assert decision.risk_tier == RiskTier.LOW
+    assert decision.recommended_action == "record_order"
+    assert decision.requires_human is False
+

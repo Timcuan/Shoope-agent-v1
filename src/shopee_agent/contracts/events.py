@@ -16,6 +16,8 @@ class EventSource(StrEnum):
 class EventType(StrEnum):
     ORDER_CREATED = "order.created"
     ORDER_UPDATED = "order.updated"
+    ORDER_ESCROW_UPDATED = "order.escrow_updated"
+    RETURN_UPDATED = "return.updated"
     SHIPPING_DOCUMENT_REQUESTED = "shipping_document.requested"
     CHAT_MESSAGE_RECEIVED = "chat.message_received"
     SYSTEM_COMMAND = "system.command"

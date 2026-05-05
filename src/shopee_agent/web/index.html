@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopee Agent | Pusat Kontrol Eksekutif</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-card glass">
+            <div class="logo-icon mx-auto" style="margin: 0 auto 1rem auto; width: 64px; height: 64px;"></div>
+            <h2>Otentikasi Agen</h2>
+            <p>Masukkan API Secret Key untuk mengakses pusat kontrol.</p>
+            <input type="password" id="api-key-input" placeholder="API_SECRET_KEY">
+            <button id="login-btn">Masuk Ke Sistem</button>
+            <div id="login-error" class="login-error"></div>
+        </div>
+    </div>
+
+    <div class="app-container" id="app-container" style="display: none;">
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon"></div>
+                <h1>Pusat Kontrol Shopee</h1>
+            </div>
+            <div class="status-indicator">
+                <span class="pulse"></span>
+                Sistem Aktif
+            </div>
+        </header>
+
+        <main class="dashboard">
+            <!-- Finacial KPIs -->
+            <section class="kpi-grid">
+                <div class="kpi-card glass">
+                    <div class="kpi-title">Total Omzet Bulan Ini</div>
+                    <div class="kpi-value" id="kpi-revenue">Rp 0</div>
+                    <div class="kpi-trend positive" id="kpi-growth">+0% vs Bln Lalu</div>
+                </div>
+                <div class="kpi-card glass">
+                    <div class="kpi-title">Total Pesanan</div>
+                    <div class="kpi-value" id="kpi-orders">0</div>
+                    <div class="kpi-trend neutral">Transaksi Selesai</div>
+                </div>
+                <div class="kpi-card glass">
+                    <div class="kpi-title">Tugas Operator</div>
+                    <div class="kpi-value" id="kpi-tasks">0</div>
+                    <div class="kpi-trend negative" id="kpi-tasks-status">Butuh Perhatian</div>
+                </div>
+            </section>
+
+            <section class="details-section">
+                <!-- Dispute Analytics -->
+                <div class="card glass">
+                    <h2>Analisis Risiko & Komplain</h2>
+                    <div class="dispute-metrics">
+                        <div class="main-metric">
+                            <div class="metric-label">Rate Komplain</div>
+                            <div class="metric-big" id="kpi-dispute-rate">0.00%</div>
+                        </div>
+                        <div class="sub-metrics">
+                            <div class="sub-item">
+                                <span>Total Komplain:</span>
+                                <strong id="kpi-dispute-count">0</strong>
+                            </div>
+                            <div class="sub-item">
+                                <span>Status:</span>
+                                <strong id="kpi-health-status" class="status-ok">NORMAL</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <hr class="separator">
+            <div class="decision-bars">
+                <div class="bar-group">
+                    <div class="bar-info">
+                        <span class="bar-label">Risiko Rendah</span>
+                        <span class="bar-value" id="val-low">0</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill low" id="bar-low" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="bar-group">
+                    <div class="bar-info">
+                        <span class="bar-label">Risiko Sedang</span>
+                        <span class="bar-value" id="val-medium">0</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill medium" id="bar-medium" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="bar-group">
+                    <div class="bar-info">
+                        <span class="bar-label">Risiko Tinggi</span>
+                        <span class="bar-value" id="val-high">0</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill high" id="bar-high" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+                </div>
+
+                <!-- System Health -->
+                <div class="card glass status-panel">
+                    <h2>Kesehatan Sistem</h2>
+                    <div class="health-grid">
+                        <div class="health-item">
+                            <span class="h-label">Database Engine</span>
+                            <span class="h-value ok">Terhubung (WAL)</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="h-label">Shopee Gateway</span>
+                            <span class="h-value ok">Aktif</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="h-label">Background Worker</span>
+                            <span class="h-value ok" id="health-worker">Berjalan</span>
+                        </div>
+                    </div>
+                    
+                    <hr class="separator" style="margin: 2rem 0">
+                    
+                    <h2>Aktivitas Otonom</h2>
+                    <div class="activity-feed" id="activity-feed">
+                        <!-- Filled by JS -->
+                        <div class="activity-placeholder">Menunggu data...</div>
+                    </div>
+
+                    <div class="footer-note">
+                        ShopeeOrchestrator v1.4.0 | Terakhir Diperbarui: <span id="last-update">-</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
