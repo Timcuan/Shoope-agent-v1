@@ -1,21 +1,22 @@
-# 🚀 Shopee Agent v1.1
+# 🚀 Shopee Agent v1.4.0 (Hardened Edition)
 
-**Telegram-Supervised Shopee Multi-Shop Orchestration Engine.**
+**Executive-Grade autonomous Shopee management ecosystem with Vision Intelligence and Financial Compliance.**
 
-Shopee Agent is a highly resilient, production-ready system designed to manage multiple Shopee shops autonomously. It maximizes operational efficiency by automating logistics, integrating advanced analytics, and providing a premium AI-powered chat interface—all controlled via Telegram.
+Shopee Agent is a production-grade orchestration engine designed for high-volume Shopee sellers. It provides full system autonomy, strict financial reconciliation, and AI-driven risk management—all wrapped in a premium glassmorphic executive dashboard.
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features (Hardened)
 
-- **🏪 Multi-Shop Orchestration**: Unified management of multiple shops with data isolation.
-- **📈 Business Intelligence (BI)**: Daily performance snapshots and proactive low-stock alerts.
-- **☁️ Cloud Audit Sync**: Automated synchronization of audit logs to Google Sheets for team collaboration.
-- **🛡️ Autonomous Dispute Defense**: AI-powered evidence gathering for return cases (Logistics & Weight analysis).
+- **👁️ Vision Intelligence**: Automated visual analysis of buyer evidence photos in disputes using Gemini Vision.
+- **🛡️ Autonomous Dispute Defense**: "God-Tier" triage combining weight analysis, logistics status, and visual damage detection.
+- **🚨 SLA Watchdog**: Proactive monitoring of shipping deadlines with P0/P1 alerts to prevent Shopee penalties.
+- **⚖️ Financial Integrity**: Full Shopee API v2 Escrow compliance with standardized 14-column monthly GSheets audit reports.
+- **🔒 AI Safety Guardrails**: Outbound chat filtering for PII (Phone numbers) and off-platform transaction detection.
+- **📈 Premium Executive Dashboard**: High-fidelity glassmorphic UI with live activity feeds and animated KPI tracking.
+- **🏪 Multi-Shop Orchestration**: Unified management of multiple shops with strict data isolation.
 - **📦 Logistics Perfection**: Arrange shipments (`/ship`) and download Waybill PDFs (`/label`) directly from Telegram.
-- **💬 AI Chat Support**: Auto-triage buyer messages, detect sentiment, and translate multi-language chats.
-- **📊 Advanced Analytics**: 14-sheet detailed Excel workbooks with automated profit margin formulas.
-- **🔥 God-Tier Resilience**: Worker watchdogs, auto-token repair, and DB pool pre-ping.
+- **🔥 Institutional Resilience**: Worker watchdogs, auto-token repair, and persistent event outbox.
 
 ---
 
