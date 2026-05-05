@@ -13,9 +13,10 @@ class Settings(BaseSettings):
     shopee_partner_id: str = ""
     shopee_partner_key: str = ""
     shopee_base_url: str = "https://partner.shopeemobile.com"
-    llm_provider: str = "disabled"
+    llm_provider: str = "gemini" # gemini, openrouter
     gemini_api_key: str = ""
-    llm_model: str = "gemini-1.5-flash"
+    openrouter_api_key: str = ""
+    llm_model: str = "gemini-1.5-pro"
     api_secret_key: str = ""
     http_proxy_url: str = ""
     printnode_api_key: str = ""
