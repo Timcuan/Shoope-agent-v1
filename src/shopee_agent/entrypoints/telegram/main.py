@@ -875,88 +875,16 @@ async def stock_cmd(message: Message) -> None:
         text = agent.get_stock_status_text(alerts, shop_id)
         await message.answer(text, parse_mode="Markdown")
 
-
-@dispatcher.message(Command("dashboard"))
-async def dashboard_cmd(message: Message) -> None:
-    """Show operational KPI dashboard."""
-    await bot.send_chat_action(message.chat.id, "typing")
-    status_msg = await message.answer("📊 **Aggregating Shop Data...** 🔍")
-    
-    import asyncio
-    await asyncio.sleep(0.8)
-    await status_msg.edit_text("📊 **Calculating KPIs...** 📈")
-    await asyncio.sleep(0.5)
-
-    parts = message.text.split()
-    shop_id = parts[1] if len(parts) > 1 else None
-    
-    with SessionLocal() as session:
-        order_repo = OrderRepository(session)
-        inv_repo = InventoryRepository(session)
-        shop_ids = get_shop_ids()
-        shop_id = shop_ids[0] if shop_ids else "demo_shop"
-        
-        from shopee_agent.app.bi_agent import BusinessIntelligenceAgent
-        bi_agent = BusinessIntelligenceAgent(order_repo, inv_repo)
-        
-        snapshot = bi_agent.get_daily_snapshot(shop_id)
-        await message.answer(snapshot, parse_mode="Markdown")
-
-
 @dispatcher.message(Command("ship"))
 async def ship_cmd(message: Message) -> None:
     parts = message.text.split()
     if len(parts) < 2:
-        await message.answer("Usage: /ship <order_sn>")
+        await message.answer("ℹ️ Cara pakai: `/ship <nomor_pesanan>`", parse_mode="Markdown")
         return
     
     order_sn = parts[1]
     # In a real app, we'd lookup the shop_id for this order_sn
-    await message.answer(f"📦 Arranging shipment for `{order_sn}`...", reply_markup=get_logistics_keyboard(order_sn, "demo_shop"), parse_mode="Markdown")
-
-
-@dispatcher.message(Command("inbox"))
-async def inbox_cmd(message: Message) -> None:
-    """Show pending high-priority tasks."""
-    await bot.send_chat_action(message.chat.id, "typing")
-    with SessionLocal() as session:
-        repo = OperatorTaskRepository(session)
-        tasks = repo.get_pending_tasks(limit=5)
-        
-        if not tasks:
-            await message.answer("✅ **Inbox Zero!**\nNo high-priority tasks pending. Great job!")
-            return
-            
-        await message.answer(f"📥 **URGENT INBOX** ({len(tasks)})\n━━━━━━━━━━━━━━━")
-        for task in tasks:
-            severity_icon = "🔴" if task.severity == "p0" else "🟠"
-            await message.answer(
-                f"{severity_icon} *{task.title}*\n"
-                f"Shop: `{task.shop_id}`\n"
-                f"Summary: _{task.summary}_",
-                reply_markup=get_task_keyboard(task.task_id),
-                parse_mode="Markdown"
-            )
-
-
-@dispatcher.message(Command("audit"))
-async def audit_cmd(message: Message) -> None:
-    await bot.send_chat_action(message.chat.id, "typing")
-    with SessionLocal() as session:
-        repo = ActivityLogRepository(session)
-        logs = repo.get_recent(10)
-        
-        if not logs:
-            await message.answer("📁 No activity logs found yet.")
-            return
-            
-        text = "📁 **Recent Activity Audit**\n━━━━━━━━━━━━━━━\n\n"
-        for log in logs:
-            time_str = log.created_at.strftime("%H:%M")
-            icon = "ℹ️" if log.severity == "info" else "🔴"
-            text += f"`{time_str}` {icon} {log.message}\n"
-            
-        await message.answer(text, parse_mode="Markdown")
+    await message.answer(f"📦 Menyiapkan pengiriman untuk `{order_sn}`...", reply_markup=get_logistics_keyboard(order_sn, "demo_shop"), parse_mode="Markdown")
 
 
 @dispatcher.message(Command("chats"))
@@ -1140,8 +1068,8 @@ async def kb_audit_cmd(message: Message) -> None:
         if gaps_found == 0:
             await message.answer("ℹ️ Tidak ditemukan celah pengetahuan baru dari chat yang dianalisis.")
 
-@dispatcher.message(Command("rekap"))
-async def rekap_harian_cmd(message: Message) -> None:
+@dispatcher.message(Command("finance"))
+async def finance_cmd(message: Message) -> None:
     """Show daily financial summary."""
     await bot.send_chat_action(message.chat.id, "typing")
     shop_ids = get_shop_ids() or ["demo_shop"]
@@ -1243,7 +1171,7 @@ async def menu_button_handler(message: Message) -> None:
     elif "Laporan" in text: await analytics_cmd(message)
     elif "Ulasan" in text: await reviews_cmd(message)
     elif "Cek Stok" in text: await stock_cmd(message)
-    elif "Uang" in text: await dashboard_cmd(message)
+    elif "Uang" in text: await finance_cmd(message)
     elif "Daftar Toko" in text: await shops_cmd(message)
     elif "Pengaturan" in text: await help_cmd(message)
 
