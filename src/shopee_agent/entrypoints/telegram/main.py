@@ -1469,7 +1469,7 @@ async def background_sync_task(bot: Bot) -> None:
             except Exception as e:
                 logger.error(f"Critical background error: {e}")
                 
-        await asyncio.sleep(1800) # Wait 30m outside semaphore
+        await asyncio.sleep(180) # Wait 3m (Near Real-time Sync) outside semaphore
 
 
 async def run_bot() -> None:
