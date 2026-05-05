@@ -303,32 +303,40 @@ def format_task_text(task) -> str:
 
 @dispatcher.message(Command("agenda"))
 async def agenda(message: Message) -> None:
-    supervisor = get_supervisor()
-    tasks = supervisor.get_agenda()
-    if not tasks:
-        await message.answer("🎉 Tidak ada tugas tertunda untuk hari ini!")
-        return
-    
-    await message.answer(f"📋 **Agenda Harian** ({len(tasks)} tugas):", parse_mode="Markdown")
-    for task in tasks:
-        text = format_task_text(task)
-        await message.answer(text, reply_markup=get_task_keyboard(task.task_id, task.status), parse_mode="Markdown")
+    await bot.send_chat_action(message.chat.id, "typing")
+    try:
+        supervisor = get_supervisor()
+        tasks = supervisor.get_agenda()
+        if not tasks:
+            await message.answer("🎉 Mantap Kak! Tidak ada tugas tertunda untuk hari ini!")
+            return
+        
+        await message.answer(f"📋 **Agenda Harian** ({len(tasks)} tugas):", parse_mode="Markdown")
+        for task in tasks:
+            text = format_task_text(task)
+            await message.answer(text, reply_markup=get_task_keyboard(task.task_id, task.status), parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat agenda. Mohon coba lagi Kak.")
 
 
 @dispatcher.message(Command("inbox"))
 async def inbox(message: Message) -> None:
-    supervisor = get_supervisor()
-    tasks = supervisor.get_inbox_page(page=1)
-    if not tasks:
-        await message.answer("📭 Yey! Semua tugas sudah selesai Kak!")
-        return
-    
-    await message.answer("📥 **Tugas Hari Ini (Halaman 1)**", parse_mode="Markdown")
-    for task in tasks:
-        text = format_task_text(task)
-        await message.answer(text, reply_markup=get_task_keyboard(task.task_id, task.status), parse_mode="Markdown")
-    
-    await message.answer("Navigasi:", reply_markup=get_pagination_keyboard(1, True))
+    await bot.send_chat_action(message.chat.id, "typing")
+    try:
+        supervisor = get_supervisor()
+        tasks = supervisor.get_inbox_page(page=1)
+        if not tasks:
+            await message.answer("📭 Yey! Semua tugas sudah selesai Kak!")
+            return
+        
+        await message.answer("📥 **Tugas Hari Ini (Halaman 1)**", parse_mode="Markdown")
+        for task in tasks:
+            text = format_task_text(task)
+            await message.answer(text, reply_markup=get_task_keyboard(task.task_id, task.status), parse_mode="Markdown")
+        
+        await message.answer("Navigasi:", reply_markup=get_pagination_keyboard(1, True))
+    except Exception:
+        await message.answer("❌ Gagal memuat tugas. Mohon coba lagi Kak.")
 
 @dispatcher.message(Command("packing"))
 async def packing_list_cmd(message: Message) -> None:
@@ -726,59 +734,60 @@ async def chat_cmd(message: Message) -> None:
         await message.answer("ℹ️ Cara pakai: `/chat <pesan pembeli>`\n\nContoh: `/chat Kak kapan pesanan saya sampai?`", parse_mode="Markdown")
         return
 
+    await bot.send_chat_action(message.chat.id, "typing")
     await message.answer(f"🔍 *Menganalisis pesan:* \"{query}\"", parse_mode="Markdown")
     
-    with SessionLocal() as session:
-        pk_repo = ProductKnowledgeRepository(session)
-        chat_agent = get_chat_agent(pk_repo=pk_repo)
-        # Look up product facts if message mentions a product keyword
-        shop_ids = get_shop_ids()
-        shop_id = shop_ids[0] if shop_ids else "demo_shop"
-        from shopee_agent.contracts.knowledge import ProductFact
-        product_facts: list[ProductFact] = []
-        fact = pk_repo and ProductKnowledgeAgent(pk_repo).lookup(shop_id, query)
-        if fact:
-            product_facts = [fact]
-        classification = chat_agent.classify(query)
-        decision = await chat_agent.decide(query, classification, product_facts=product_facts or None)
-        
-        # Log to a session for the user
-        session_repo = ChatSessionRepository(session)
-        user_id = str(message.from_user.id)
-        session_repo.get_or_create_session(f"sim_{user_id}", shop_id, buyer_id=user_id)
-        session_repo.add_message(f"sim_{user_id}", ChatMessage(role="user", content=query))
-        if decision.draft_reply:
-             session_repo.add_message(f"sim_{user_id}", ChatMessage(role="assistant", content=decision.draft_reply))
-        
-        session_repo.update_session(
-            f"sim_{user_id}", 
-            last_intent=classification.intent,
-            risk_tier=classification.risk_tier
-        )
+    try:
+        with SessionLocal() as session:
+            pk_repo = ProductKnowledgeRepository(session)
+            chat_agent = get_chat_agent(pk_repo=pk_repo)
+            shop_ids = get_shop_ids()
+            shop_id = shop_ids[0] if shop_ids else "demo_shop"
+            from shopee_agent.contracts.knowledge import ProductFact
+            product_facts: list[ProductFact] = []
+            fact = pk_repo and ProductKnowledgeAgent(pk_repo).lookup(shop_id, query)
+            if fact:
+                product_facts = [fact]
+            classification = chat_agent.classify(query)
+            decision = await chat_agent.decide(query, classification, product_facts=product_facts or None)
+            
+            session_repo = ChatSessionRepository(session)
+            user_id = str(message.from_user.id)
+            session_repo.get_or_create_session(f"sim_{user_id}", shop_id, buyer_id=user_id)
+            session_repo.add_message(f"sim_{user_id}", ChatMessage(role="user", content=query))
+            if decision.draft_reply:
+                session_repo.add_message(f"sim_{user_id}", ChatMessage(role="assistant", content=decision.draft_reply))
+            
+            session_repo.update_session(
+                f"sim_{user_id}", 
+                last_intent=classification.intent,
+                risk_tier=classification.risk_tier
+            )
 
-        risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(decision.classification.risk_tier, "⚪")
-        sentiment_icon = "😊" if decision.classification.sentiment == "positive" else "😐" if decision.classification.sentiment == "neutral" else "😡"
-        
-        reply_text = (
-            f"🧠 **AI Intelligence Analysis**\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"👤 **Buyer Intent:** `{decision.classification.intent.upper()}`\n"
-            f"🎯 **Sentiment:** {sentiment_icon} `{decision.classification.sentiment.capitalize()}`\n"
-            f"🛡️ **Risk Level:** {risk_emoji} `{decision.classification.risk_tier.capitalize()}`\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"📝 **AI Draft Response:**\n"
-            f"_{decision.draft_reply}_\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"💡 **Strategy:** {decision.reasoning}"
-        )
-        
-        from shopee_agent.entrypoints.telegram.keyboards import get_chat_keyboard
-        await message.answer(
-            reply_text,
-            reply_markup=get_chat_keyboard(f"sim_{user_id}", shop_id),
-            parse_mode="Markdown"
-        )
-        return
+            risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(decision.classification.risk_tier, "⚪")
+            sentiment_icon = "😊" if decision.classification.sentiment == "positive" else "😐" if decision.classification.sentiment == "neutral" else "😡"
+            
+            reply_text = (
+                f"🧠 **Analisis Pesan Pembeli**\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👤 **Niat Pembeli:** `{decision.classification.intent.upper()}`\n"
+                f"🎯 **Sentimen:** {sentiment_icon} `{decision.classification.sentiment.capitalize()}`\n"
+                f"🛡️ **Level Risiko:** {risk_emoji} `{decision.classification.risk_tier.capitalize()}`\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"📝 **Draft Balasan AI:**\n"
+                f"_{decision.draft_reply}_\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💡 **Strategi:** {decision.reasoning}"
+            )
+            
+            from shopee_agent.entrypoints.telegram.keyboards import get_chat_keyboard
+            await message.answer(
+                reply_text,
+                reply_markup=get_chat_keyboard(f"sim_{user_id}", shop_id),
+                parse_mode="Markdown"
+            )
+    except Exception:
+        await message.answer("❌ Gagal menganalisis pesan. Mohon coba lagi Kak.")
 
 
 
@@ -787,15 +796,16 @@ async def ask_cmd(message: Message) -> None:
     """Ask a general product or policy question using LLM + Knowledge Base."""
     query = message.text.replace("/ask", "").strip()
     if not query:
-        await message.answer("Usage: `/ask <question>`", parse_mode="Markdown")
+        await message.answer("ℹ️ Cara pakai: `/ask <pertanyaan Anda>`", parse_mode="Markdown")
         return
 
     llm = get_llm_gateway()
     if not llm:
-        await message.answer("❌ LLM provider is not configured.")
+        await message.answer("❌ Maaf Kak, fitur AI belum dikonfigurasi.")
         return
 
-    await message.answer(f"🤔 *Thinking about:* \"{query}\"...", parse_mode="Markdown")
+    await bot.send_chat_action(message.chat.id, "typing")
+    await message.answer(f"🤔 *Sedang mencari jawaban untuk:* \"{query}\"...", parse_mode="Markdown")
     
     with SessionLocal() as session:
         pk_repo = ProductKnowledgeRepository(session)
@@ -822,12 +832,12 @@ async def ask_cmd(message: Message) -> None:
 
         ans = await llm.generate_response(prompt)
         await message.answer(f"💡 *Jawaban AI:*\n\n{ans}", parse_mode="Markdown")
-        await message.answer(f"💡 *Answer:* \n{ans}", parse_mode="Markdown")
 
 
 @dispatcher.message(Command("returns"))
 async def returns_cmd(message: Message) -> None:
     """List active returns and disputes."""
+    await bot.send_chat_action(message.chat.id, "typing")
     shop_ids = get_shop_ids() or ["demo_shop"]
     
     with SessionLocal() as session:
