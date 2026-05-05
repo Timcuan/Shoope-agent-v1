@@ -621,6 +621,7 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
 @dispatcher.message(Command("dashboard"))
 async def dashboard_cmd(message: Message) -> None:
     """Show interactive global dashboard."""
+    await bot.send_chat_action(message.chat.id, "typing")
     agent = get_analytics_agent()
     report = agent.get_kpi_report_for_range(30)
     text = agent.format_dashboard_text(report)
@@ -680,18 +681,17 @@ async def diagnose_cmd(message: Message) -> None:
         results.append(f"❌ **Environment:** Kurang {', '.join(missing)}")
 
     text = "🔬 **Laporan Diagnostik Sistem**\n━━━━━━━━━━━━━━━\n" + "\n".join(results)
-
-
+    await message.answer(text, parse_mode="Markdown")
 
 @dispatcher.message(Command("sync"))
 async def sync_cmd(message: Message) -> None:
     """Trigger order sync for all shops in background."""
     if SYNC_SEMAPHORE.locked():
-        await message.answer("⚠️ **Sync already in progress.** Please wait for it to finish.")
+        await message.answer("⚠️ **Sinkronisasi sedang berjalan** Kak. Mohon tunggu sebentar ya. 🙏")
         return
 
     await bot.send_chat_action(message.chat.id, "typing")
-    await message.answer("🔄 **Sync triggered.** Processing all shops in the background...\nYou will be notified when complete.")
+    await message.answer("🔄 **Sinkronisasi dimulai!**\nSedang memproses semua toko di latar belakang...\nSaya akan kasih tahu kalau sudah selesai ya Kak. 👋")
     
     asyncio.create_task(run_background_sync_flow(message))
 
@@ -723,10 +723,10 @@ async def chat_cmd(message: Message) -> None:
     """Simulate classifying an incoming buyer message."""
     query = message.text.replace("/chat", "").strip()
     if not query:
-        await message.answer("Usage: `/chat <message text>`", parse_mode="Markdown")
+        await message.answer("ℹ️ Cara pakai: `/chat <pesan pembeli>`\n\nContoh: `/chat Kak kapan pesanan saya sampai?`", parse_mode="Markdown")
         return
 
-    await message.answer(f"🔍 *Analyzing:* \"{query}\"", parse_mode="Markdown")
+    await message.answer(f"🔍 *Menganalisis pesan:* \"{query}\"", parse_mode="Markdown")
     
     with SessionLocal() as session:
         pk_repo = ProductKnowledgeRepository(session)
@@ -1309,8 +1309,11 @@ async def boost_status_cmd(message: Message) -> None:
             text += "📭 Belum ada produk yang dinaikkan otomatis."
         else:
             for b in active:
-                remaining = (b.expires_at - datetime.now()).total_seconds() / 60
-                text += f"• `{b.item_id}`\n  ⏳ Sisa: `{int(remaining)} menit`\n"
+                if b.expires_at and b.expires_at > datetime.now():
+                    remaining = (b.expires_at - datetime.now()).total_seconds() / 60
+                    text += f"\u2022 `{b.item_id}`\n  \u23f3 Sisa: `{int(remaining)} menit`\n"
+                else:
+                    text += f"\u2022 `{b.item_id}`\n  \u23f3 Sisa: `Segera berakhir`\n"
             
         text += (
             f"\n━━━━━━━━━━━━━━━\n"
