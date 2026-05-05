@@ -13,7 +13,7 @@ from shopee_agent.config.settings import get_settings
 class GeminiProvider(LLMGateway):
     """Google Gemini implementation of LLMGateway."""
 
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-flash") -> None:
+    def __init__(self, api_key: str, model_name: str = "gemini-1.5-pro") -> None:
         settings = get_settings()
         if settings.http_proxy_url:
             os.environ["HTTP_PROXY"] = settings.http_proxy_url
@@ -21,37 +21,58 @@ class GeminiProvider(LLMGateway):
             
         genai.configure(api_key=api_key)
         
+        # High-End Executive Personality Instruction
         system_instruction = (
-            "Anda adalah Customer Service dan Sales Representative tingkat dewa dari sebuah Toko Shopee Indonesia. "
-            "PERATURAN MUTLAK:\n"
-            "1. JANGAN PERNAH menyebutkan bahwa Anda adalah AI, bot, atau asisten virtual.\n"
-            "2. Jangan gunakan kata 'Mimin'. Gunakan 'Kami' atau 'Admin' jika merujuk diri sendiri.\n"
-            "3. Selalu sapa pembeli dengan sebutan 'Kak' atau 'Kakak' di awal kalimat.\n"
-            "4. Format balasan harus rapi, gunakan *bullet points* jika menyebutkan lebih dari 2 hal.\n"
-            "5. Misi Anda adalah memuaskan pelanggan DAN mencetak penjualan (Closing).\n"
+            "Anda adalah 'Shopee Intelligence Elite Agent'—perpaduan antara Customer Service Senior, "
+            "Pakar Logistik, dan Sales Manager papan atas. Anda cerdas, taktis, sangat manusiawi, "
+            "namun tetap patuh pada aturan platform Shopee.\n\n"
+            "KEPRIBADIAN:\n"
+            "- Profesional, solutif, dan penuh empati (Terutama untuk komplain).\n"
+            "- Persuasif namun tidak memaksa (Untuk closing penjualan).\n"
+            "- Berbasis Data: Jangan mengarang informasi produk/resi jika tidak ada di konteks.\n\n"
+            "GAYA BAHASA:\n"
+            "- Selalu sapa 'Kak' di awal.\n"
+            "- Gunakan Bahasa Indonesia yang natural (Semi-formal), bukan bahasa kaku robot.\n"
+            "- Gunakan emoji secara strategis (1-2 per pesan), jangan berlebihan.\n"
+            "- JANGAN PERNAH menyebutkan identitas AI/Bot."
         )
-        self.model = genai.GenerativeModel(model_name, system_instruction=system_instruction)
+        
+        self.config = {
+            "temperature": 0.35, # Lower for consistency
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 1024,
+        }
+        
+        self.model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_instruction,
+            generation_config=self.config
+        )
 
     async def analyze_message(
         self, text: str, context: dict[str, Any] | None = None
     ) -> ChatAnalysis:
         prompt = f"""
-        Analyze the following customer message for a Shopee store.
+        [DEEP ANALYSIS MODE - EXECUTIVE LEVEL]
+        Analyze this Shopee customer message with high precision.
         Message: "{text}"
         Context: {json.dumps(context or {}, default=str)}
 
-        Respond ONLY with a JSON object in this format:
+        Your task is to extract the core intent and emotional state for business decision making.
+        
+        Respond ONLY with a valid JSON object:
         {{
             "sentiment_score": float (-1.0 to 1.0),
             "urgency_score": float (0.0 to 1.0),
-            "suggested_intent": string (one of: order_status, product_question, complaint, cancellation, refund, general),
-            "buyer_mood": string,
-            "reasoning": string
+            "suggested_intent": "order_status" | "product_question" | "complaint" | "cancellation" | "refund" | "general",
+            "buyer_mood": "angry" | "neutral" | "happy" | "confused" | "interested",
+            "reasoning": "Brief explanation of your classification"
         }}
         """
-        response = self.model.generate_content(prompt)
         try:
-            # Simple JSON extraction from response
+            # Use specific generation config for classification (zero temp)
+            response = self.model.generate_content(prompt, generation_config={"temperature": 0})
             text_res = response.text
             if "```json" in text_res:
                 text_res = text_res.split("```json")[1].split("```")[0]
@@ -64,7 +85,6 @@ class GeminiProvider(LLMGateway):
                 reasoning=data.get("reasoning"),
             )
         except Exception:
-            # Fallback if LLM fails or returns invalid JSON
             return ChatAnalysis(sentiment_score=0.0, urgency_score=0.0)
 
     async def draft_response(
@@ -77,47 +97,45 @@ class GeminiProvider(LLMGateway):
     ) -> str:
         history_text = ""
         if history:
-            history_text = "\n".join([f"{m.role}: {m.content}" for m in history])
+            history_text = "\n".join([f"{'Buyer' if m.is_buyer else 'Agent'}: {m.content}" for m in history[-5:]])
 
-        # Dynamic Empathy & Sales Logic
-        mood_instruction = ""
-        if analysis.buyer_mood in ["angry", "frustrated", "disappointed"]:
-            mood_instruction = "Pembeli sedang marah/kecewa. Mulailah dengan permohonan maaf yang tulus dan sangat berempati. Berikan solusi langsung. JANGAN gunakan emoji berlebihan (cukup 🙏)."
-        elif classification.intent in ["product_question", "general"] and analysis.buyer_mood in ["curious", "interested"]:
-            mood_instruction = "Pembeli tertarik pada produk. Terapkan taktik *Upselling* atau FOMO (Fear Of Missing Out) secara halus, misalnya: 'Stok kita menipis Kak, yuk diamankan sekarang sebelum kehabisan!'. Gunakan emoji ceria."
-        elif classification.intent == "order_status":
-            mood_instruction = "Pembeli menanyakan status pesanan. Berikan jawaban yang menenangkan dan pastikan pesanan mereka aman di tangan kurir. Gunakan emoji paket 📦."
-        else:
-            mood_instruction = "Balas dengan ramah, profesional, dan gunakan emoji yang sesuai."
-
-        product_block = ""
-        if product_context:
-            product_block = f"\n{product_context}\n"
-
+        # Advanced Strategy Selection
+        strategy = "GENERAL_POLITE"
+        if analysis.sentiment_score < -0.6 or classification.intent in ["complaint", "refund"]:
+            strategy = "CRISIS_MANAGEMENT_EMPATHY"
+        elif classification.intent == "product_question" and analysis.urgency_score > 0.4:
+            strategy = "SALES_CONVERSION_URGENCY"
+        
         prompt = f"""\
-Riwayat Percakapan (History):
+[STRATEGY: {strategy}]
+History:
 {history_text}
-{product_block}
-Detail Analisis AI Internal:
-- Intent Pembeli: {classification.intent}
-- Suasana Hati Pembeli: {analysis.buyer_mood}
-- Konteks Pesanan/Produk: {json.dumps(context or {}, default=str)}
 
-Instruksi Khusus Situasi Ini:
-{mood_instruction}
+Product Knowledge:
+{product_context or "No specific product info provided."}
 
-Berdasarkan data di atas, tuliskan balasan yang nyambung dengan history, padat, sangat manusiawi, dan profesional dalam Bahasa Indonesia.
-PENTING: Jika ada DATA PRODUK RESMI di atas, HANYA gunakan data tersebut untuk menjawab pertanyaan produk. JANGAN mengarang informasi yang tidak ada.
+Context Data (Order/User):
+{json.dumps(context or {}, default=str)}
+
+Buyer Intent: {classification.intent}
+Buyer Mood: {analysis.buyer_mood}
+
+TASK: Draft a high-conversion, empathetic response. 
+- If complaint: Acknowledge, apologize, and state clear next steps.
+- If product query: Answer using facts AND invite them to checkout.
+- If order status: Provide shipping info precisely.
+
+Draft the response now:
 """
         response = self.model.generate_content(prompt)
         return response.text.strip()
 
     async def summarize_session(self, messages: list[dict[str, str]]) -> str:
-        prompt = f"Summarize the following chat history in one or two sentences:\n{json.dumps(messages)}"
+        prompt = f"Summarize this Shopee business interaction for an internal audit report:\n{json.dumps(messages)}"
         response = self.model.generate_content(prompt)
         return response.text.strip()
 
     async def generate_response(self, prompt: str) -> str:
-        """Freeform prompt for internal agent reasoning (not customer-facing)."""
+        """Freeform reasoning for internal agents."""
         response = self.model.generate_content(prompt)
         return response.text.strip()

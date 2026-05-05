@@ -136,6 +136,13 @@ class ChatAgent:
                 draft = f"🌏 **Translated from {lang}**\n_Buyer:_ \"{indo_ver}\"\n\n{draft}"
             
             reasons.append("llm_generated_draft")
+
+            # --- Revision: Continuous Learning Gate ---
+            # Check for knowledge gaps while we have the context
+            gap = await self.extract_knowledge_gap(history, [fact] if fact else None)
+            if gap:
+                reasons.append("kb_gap_detected")
+                draft = f"💡 [SARAN KB]: Pembeli menanyakan sesuatu yang belum ada di database Anda.\nSaran Pertanyaan: {gap['question']}\nSaran Jawaban: {gap['answer']}\n\n{draft}"
         else:
             draft = self._generate_draft(classification, order_context)
             reasons.append("template_generated_draft")
