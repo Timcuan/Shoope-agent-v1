@@ -375,3 +375,80 @@ class ShopeeGateway:
             params={"order_sn": order_sn},
         )
         return response.get("response", {})
+
+    async def boost_item(self, shop_id: str, item_id_list: list[int]) -> dict:
+        """Boost items (Naikkan Produk) to top of search results. Max 5 items."""
+        token = await self._get_valid_token(shop_id)
+        path = "/api/v2/product/boost_item"
+        response = await self._call_with_retry(
+            self.client.post,
+            shop_id,
+            path,
+            access_token=token.access_token,
+            shop_id=shop_id,
+            json_data={"item_id_list": item_id_list},
+        )
+        return response.get("response", {})
+
+    async def get_review_list(self, shop_id: str, cursor: str = "", page_size: int = 20) -> dict:
+        """Fetch shop reviews."""
+        token = await self._get_valid_token(shop_id)
+        path = "/api/v2/product/get_comment"
+        params = {"cursor": cursor, "page_size": page_size}
+        response = await self._call_with_retry(
+            self.client.get,
+            shop_id,
+            path,
+            access_token=token.access_token,
+            shop_id=shop_id,
+            params=params
+        )
+        return response.get("response", {})
+
+    async def reply_review(self, shop_id: str, comment_id: int, comment: str) -> dict:
+        """Reply to a customer review."""
+        token = await self._get_valid_token(shop_id)
+        path = "/api/v2/product/reply_comment"
+        response = await self._call_with_retry(
+            self.client.post,
+            shop_id,
+            path,
+            access_token=token.access_token,
+            shop_id=shop_id,
+            json_data={"comment_id": comment_id, "comment": comment}
+        )
+        return response.get("response", {})
+
+    async def update_stock(self, shop_id: str, item_id: int, stock_list: list[dict]) -> dict:
+        """
+        Update stock for an item or its models.
+        stock_list: [{"model_id": 0, "normal_stock": 10}, ...]
+        """
+        token = await self._get_valid_token(shop_id)
+        path = "/api/v2/product/update_stock"
+        response = await self._call_with_retry(
+            self.client.post,
+            shop_id,
+            path,
+            access_token=token.access_token,
+            shop_id=shop_id,
+            json_data={"item_id": item_id, "stock_list": stock_list}
+        )
+        return response.get("response", {})
+
+    async def update_price(self, shop_id: str, item_id: int, price_list: list[dict]) -> dict:
+        """
+        Update price for an item or its models.
+        price_list: [{"model_id": 0, "original_price": 15000}, ...]
+        """
+        token = await self._get_valid_token(shop_id)
+        path = "/api/v2/product/update_price"
+        response = await self._call_with_retry(
+            self.client.post,
+            shop_id,
+            path,
+            access_token=token.access_token,
+            shop_id=shop_id,
+            json_data={"item_id": item_id, "price_list": price_list}
+        )
+        return response.get("response", {})

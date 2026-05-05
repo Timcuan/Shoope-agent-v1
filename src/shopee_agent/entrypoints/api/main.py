@@ -61,17 +61,44 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/api/stats", dependencies=[Depends(verify_api_key)])
-def get_stats() -> dict:
-    from shopee_agent.persistence.models import EventRecord, DecisionRecord, OutboxRecord, OperatorTaskRecord
+@app.get("/api/shops", dependencies=[Depends(verify_api_key)])
+def get_shops() -> list[dict]:
+    from shopee_agent.persistence.models import ShopTokenRecord
     with SessionLocal() as session:
-        events = session.scalar(select(func.count(EventRecord.id))) or 0
-        decisions_low = session.scalar(select(func.count(DecisionRecord.id)).where(DecisionRecord.risk_tier == "low")) or 0
-        decisions_medium = session.scalar(select(func.count(DecisionRecord.id)).where(DecisionRecord.risk_tier == "medium")) or 0
-        decisions_high = session.scalar(select(func.count(DecisionRecord.id)).where(DecisionRecord.risk_tier == "high")) or 0
-        outbox_pending = session.scalar(select(func.count(OutboxRecord.id)).where(OutboxRecord.status == "pending")) or 0
-        tasks_open = session.scalar(select(func.count(OperatorTaskRecord.id)).where(OperatorTaskRecord.status == "open")) or 0
-        total_logs = session.scalar(select(func.count(ActivityLogRecord.id))) or 0
+        shops = session.scalars(select(ShopTokenRecord)).all()
+        return [{"shop_id": s.shop_id, "expires_at": s.expires_at.isoformat()} for s in shops]
+
+
+@app.get("/api/stats", dependencies=[Depends(verify_api_key)])
+def get_stats(shop_id: str = None) -> dict:
+    from shopee_agent.persistence.models import EventRecord, DecisionRecord, OutboxRecord, OperatorTaskRecord, ActivityLogRecord
+    with SessionLocal() as session:
+        # Base queries
+        stmt_events = select(func.count(EventRecord.id))
+        stmt_low = select(func.count(DecisionRecord.id)).where(DecisionRecord.risk_tier == "low")
+        stmt_medium = select(func.count(DecisionRecord.id)).where(DecisionRecord.risk_tier == "medium")
+        stmt_high = select(func.count(DecisionRecord.id)).where(DecisionRecord.risk_tier == "high")
+        stmt_pending = select(func.count(OutboxRecord.id)).where(OutboxRecord.status == "pending")
+        stmt_tasks = select(func.count(OperatorTaskRecord.id)).where(OperatorTaskRecord.status == "open")
+        stmt_logs = select(func.count(ActivityLogRecord.id))
+
+        if shop_id:
+            stmt_events = stmt_events.where(EventRecord.shop_id == shop_id)
+            stmt_low = stmt_low.where(DecisionRecord.shop_id == shop_id)
+            stmt_medium = stmt_medium.where(DecisionRecord.shop_id == shop_id)
+            stmt_high = stmt_high.where(DecisionRecord.shop_id == shop_id)
+            # Outbox usually doesn't have shop_id directly in model, check if it does
+            # Operator tasks have it
+            stmt_tasks = stmt_tasks.where(OperatorTaskRecord.shop_id == shop_id)
+            stmt_logs = stmt_logs.where(ActivityLogRecord.shop_id == shop_id)
+
+        events = session.scalar(stmt_events) or 0
+        decisions_low = session.scalar(stmt_low) or 0
+        decisions_medium = session.scalar(stmt_medium) or 0
+        decisions_high = session.scalar(stmt_high) or 0
+        outbox_pending = session.scalar(stmt_pending) or 0
+        tasks_open = session.scalar(stmt_tasks) or 0
+        total_logs = session.scalar(stmt_logs) or 0
         
     return {
         "events": events,

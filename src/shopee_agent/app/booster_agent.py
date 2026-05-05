@@ -46,20 +46,19 @@ class BoosterAgent:
         )[:5 - len(current_slots)]
         
         newly_boosted = []
-        for item_id in candidates:
-            # Simulation of Shopee API: boost_item
-            # success = await self.gateway.boost_item(shop_id, int(item_id))
-            success = True # Mock
+        if candidates:
+            res = await self.gateway.boost_item(shop_id, [int(iid) for iid in candidates])
+            success_ids = res.get("success_list", [])
             
-            if success:
+            for item_id in success_ids:
                 record = BoostSlotRecord(
                     shop_id=shop_id,
-                    item_id=item_id,
+                    item_id=str(item_id),
                     boosted_at=now,
                     expires_at=now + timedelta(hours=4, minutes=5) # 5 min buffer
                 )
                 self.session.add(record)
-                newly_boosted.append(item_id)
+                newly_boosted.append(str(item_id))
                 logger.info(f"[Booster] Boosted item {item_id} for {shop_id}")
         
         self.session.commit()

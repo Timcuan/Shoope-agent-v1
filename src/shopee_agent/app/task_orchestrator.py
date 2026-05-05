@@ -123,6 +123,58 @@ class TaskOrchestrator:
         await asyncio.gather(*[t for t in tasks if t], return_exceptions=True)
         logger.info("TaskOrchestrator stopped.")
 
+    async def run_operational_maintenance(self, shop_id: str):
+        """Execute high-value operational tasks for a shop."""
+        logger.info(f"--- Starting Operational Maintenance for {shop_id} ---")
+        
+        # 1. Booster Rotation (Naikkan Produk)
+        from shopee_agent.app.booster_agent import BoosterAgent
+        booster = BoosterAgent(self.session, self.gateway)
+        newly_boosted = await booster.auto_rotate_boosts(shop_id)
+        if newly_boosted:
+            logger.info(f"[BI] Booster rotated: {len(newly_boosted)} items promoted.")
+
+        # 2. Review Management (Sync & Auto-reply)
+        from shopee_agent.app.review_agent import ReviewAgent
+        reviewer = ReviewAgent(self.session, self.llm)
+        res = await self.gateway.get_review_list(shop_id)
+        reviewer.sync_reviews(shop_id, res.get("comment_list", []))
+        replied_count = await reviewer.draft_all_pending(shop_id)
+        
+        # Auto-execute high-rating replies (Safe automation)
+        pending_replies = reviewer.get_pending_replies(shop_id)
+        for rev in pending_replies:
+            if rev.rating_star >= 4: # Safe to auto-reply to good reviews
+                await self.gateway.reply_review(shop_id, int(rev.review_id), rev.reply_comment)
+                rev.status = "replied"
+        self.session.commit()
+
+        # 3. Inventory Health Analysis
+        from shopee_agent.app.inventory_health import InventoryHealthAgent
+        inventory = InventoryHealthAgent(self.session)
+        alerts = inventory.audit_shop_stock(shop_id)
+        for alert in alerts:
+            if alert.severity == "CRITICAL":
+                from shopee_agent.contracts.operations import OperatorTask, TaskCategory, TaskSeverity, TaskStatus
+                from uuid import uuid4
+                task = OperatorTask(
+                    task_id=f"inv_{uuid4().hex[:8]}",
+                    category=TaskCategory.INVENTORY,
+                    subject_id=alert.item_id,
+                    shop_id=shop_id,
+                    severity=TaskSeverity.HIGH,
+                    title=f"STOK KRITIS: {alert.item_name}",
+                    summary=f"Stok tinggal {alert.current_stock}. Estimasi habis dalam {alert.days_left} hari.",
+                    status=TaskStatus.OPEN,
+                    due_at=datetime.now() + timedelta(hours=12)
+                )
+                from shopee_agent.app.operations import OperationsSupervisorAgent
+                from shopee_agent.persistence.repositories import OperatorTaskRepository
+                ops = OperationsSupervisorAgent(OperatorTaskRepository(self.session), session=self.session)
+                ops.create_task(task)
+
+        logger.info(f"--- Operational Maintenance Completed for {shop_id} ---")
+
     async def _get_shop_semaphore(self, shop_id: str) -> asyncio.Semaphore:
         if shop_id not in self.shop_semaphores:
             self.shop_semaphores[shop_id] = asyncio.Semaphore(self.rps_limit)

@@ -52,7 +52,30 @@ class FinanceAgent:
         )
         self.ledger_repo.upsert_ledger(data)
 
-        # Mismatch detection (Localized)
+        # Shipping Overcharge Detection
+        actual_shipping = float(income.get("actual_shipping_fee", 0))
+        est_shipping = float(income.get("estimated_shipping_fee", 0))
+        
+        if actual_shipping > est_shipping + 100: # Small buffer
+            overcharge = actual_shipping - est_shipping
+            self.supervisor.create_task(OperatorTask(
+                task_id=f"fin_ship_over_{order_sn}",
+                category="FINANCE",
+                subject_id=order_sn,
+                shop_id=shop_id,
+                severity=TaskSeverity.MEDIUM,
+                title=f"📦 Overcharge Ongkir: {order_sn}",
+                summary=(
+                    f"⚠️ **Selisih Ongkos Kirim Terdeteksi**\n\n"
+                    f"Estimasi: `Rp {est_shipping:,.0f}`\n"
+                    f"Tagihan Kurir: `Rp {actual_shipping:,.0f}`\n"
+                    f"Kelebihan Bayar: **Rp {overcharge:,.0f}**\n\n"
+                    f"Kemungkinan besar disebabkan oleh perbedaan berat timbangan atau dimensi paket. "
+                    f"Mohon audit SOP packing Anda."
+                ),
+            ))
+
+        # Mismatch detection (Total Income)
         if estimated > 0 and abs(final - estimated) > MISMATCH_THRESHOLD:
             delta = final - estimated
             self.supervisor.create_task(OperatorTask(
@@ -60,7 +83,7 @@ class FinanceAgent:
                 category="FINANCE",
                 subject_id=order_sn,
                 shop_id=shop_id,
-                severity=TaskSeverity.P2,
+                severity=TaskSeverity.HIGH,
                 title=f"🚨 Selisih Dana: {order_sn}",
                 summary=(
                     f"⚠️ **Ketidaksesuaian Pembayaran**\n\n"
