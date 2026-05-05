@@ -46,27 +46,23 @@ class OpenRouterProvider(LLMGateway):
         )
         user_prompt = f"Message: \"{text}\"\nContext: {json.dumps(context or {}, default=str)}"
         
-        try:
-            res_text = await self._request([
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ], temperature=0.1)
-            
-            # Extract JSON
-            import re
-            match = re.search(r"\{.*\}", res_text, re.DOTALL)
-            if match:
-                data = json.loads(match.group(0))
-                return ChatAnalysis(
-                    sentiment_score=data.get("sentiment_score", 0.0),
-                    urgency_score=data.get("urgency_score", 0.0),
-                    suggested_intent=data.get("suggested_intent"),
-                    buyer_mood=data.get("buyer_mood"),
-                    reasoning=data.get("reasoning"),
-                )
-        except Exception as e:
-            logger.error(f"OpenRouter analysis error: {e}")
-            return ChatAnalysis(sentiment_score=0.0, urgency_score=0.0)
+        res_text = await self._request([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ], temperature=0.1)
+        
+        # Extract JSON
+        import re
+        match = re.search(r"\{.*\}", res_text, re.DOTALL)
+        if match:
+            data = json.loads(match.group(0))
+            return ChatAnalysis(
+                sentiment_score=data.get("sentiment_score", 0.0),
+                urgency_score=data.get("urgency_score", 0.0),
+                suggested_intent=data.get("suggested_intent"),
+                buyer_mood=data.get("buyer_mood"),
+                reasoning=data.get("reasoning"),
+            )
         return ChatAnalysis(sentiment_score=0.0, urgency_score=0.0)
 
     async def draft_response(

@@ -13,7 +13,7 @@ from shopee_agent.config.settings import get_settings
 class GeminiProvider(LLMGateway):
     """Google Gemini implementation of LLMGateway."""
 
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-flash") -> None:
+    def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash") -> None:
         settings = get_settings()
         if settings.http_proxy_url:
             os.environ["HTTP_PROXY"] = settings.http_proxy_url
@@ -70,22 +70,19 @@ class GeminiProvider(LLMGateway):
             "reasoning": "Brief explanation of your classification"
         }}
         """
-        try:
-            # Use specific generation config for classification (zero temp)
-            response = self.model.generate_content(prompt, generation_config={"temperature": 0})
-            text_res = response.text
-            if "```json" in text_res:
-                text_res = text_res.split("```json")[1].split("```")[0]
-            data = json.loads(text_res)
-            return ChatAnalysis(
-                sentiment_score=data.get("sentiment_score", 0.0),
-                urgency_score=data.get("urgency_score", 0.0),
-                suggested_intent=data.get("suggested_intent"),
-                buyer_mood=data.get("buyer_mood"),
-                reasoning=data.get("reasoning"),
-            )
-        except Exception:
-            return ChatAnalysis(sentiment_score=0.0, urgency_score=0.0)
+        # Use specific generation config for classification (zero temp)
+        response = self.model.generate_content(prompt, generation_config={"temperature": 0})
+        text_res = response.text
+        if "```json" in text_res:
+            text_res = text_res.split("```json")[1].split("```")[0]
+        data = json.loads(text_res)
+        return ChatAnalysis(
+            sentiment_score=data.get("sentiment_score", 0.0),
+            urgency_score=data.get("urgency_score", 0.0),
+            suggested_intent=data.get("suggested_intent"),
+            buyer_mood=data.get("buyer_mood"),
+            reasoning=data.get("reasoning"),
+        )
 
     async def draft_response(
         self,

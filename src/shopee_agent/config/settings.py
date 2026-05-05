@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini" # gemini, openrouter
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
-    llm_model: str = "gemini-1.5-flash"
+    llm_model: str = "gemini-2.0-flash"
     api_secret_key: str = ""
     http_proxy_url: str = ""
     printnode_api_key: str = ""
