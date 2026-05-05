@@ -832,7 +832,7 @@ async def returns_cmd(message: Message) -> None:
     
     with SessionLocal() as session:
         repo = ReturnDisputeRepository(session)
-        text = "⚖️ *Active Disputes:*\n\n"
+        text = "⚖️ **Daftar Komplain & Pengembalian Aktif:**\n\n"
         found = False
         
         for shop_id in shop_ids:
@@ -841,7 +841,7 @@ async def returns_cmd(message: Message) -> None:
                 continue
             
             found = True
-            text += f"🏪 *Shop:* `{shop_id}`\n"
+            text += f"🏪 *Toko:* `{shop_id}`\n"
             for r in returns:
                 from sqlalchemy import select
                 from shopee_agent.persistence.models import ReturnDisputeRecord
@@ -849,15 +849,20 @@ async def returns_cmd(message: Message) -> None:
                     select(ReturnDisputeRecord).where(ReturnDisputeRecord.return_sn == r.return_sn)
                 )
                 risk_emoji = "🔴" if record.risk_score > 0.7 else "🟡"
+                
+                rec_text = "TIDAK ADA"
+                if record.agent_recommendation:
+                    rec_text = record.agent_recommendation.upper()
+                    
                 text += (
                     f"{risk_emoji} *{r.return_sn}* - Rp {r.amount:,.0f}\n"
-                    f"Reason: `{r.reason}`\n"
-                    f"Rec: `{record.agent_recommendation.upper() if record.agent_recommendation else 'NONE'}`\n"
+                    f"Alasan: `{r.reason}`\n"
+                    f"Saran AI: `{rec_text}`\n"
                     f"/find_{r.return_sn}\n\n"
                 )
         
         if not found:
-            await message.answer("✅ No active disputes found across all shops.")
+            await message.answer("✅ Yey! Tidak ada komplain aktif saat ini Kak.")
         else:
             await message.answer(text, parse_mode="Markdown")
 

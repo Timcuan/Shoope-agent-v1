@@ -92,12 +92,12 @@ class InventoryHealthAgent:
 
     def get_stock_status_text(self, alerts, shop_id):
         if not alerts:
-            return f"✅ **Stock Health: {shop_id}**\nSedia aman untuk semua item (> 7 hari)."
+            return f"✅ **Kesehatan Stok: {shop_id}**\nWah mantap Kak, stok aman semua! (> 7 hari)."
             
         text = f"🚨 **Peringatan Stok: {shop_id}**\n━━━━━━━━━━━━━━━\n\n"
         for a in alerts:
             icon = "🔴" if a["severity"] == "p0" else "🟡"
-            text += f"{icon} *{a['name']}*\n   Stok: `{a['stock']}` | Runway: `{a['runway']} hari`\n\n"
+            text += f"{icon} *{a['name']}*\n   Sisa Stok: `{a['stock']} pcs` | Estimasi Habis: `{a['runway']} hari lagi`\n\n"
         
-        text += "━━━━━━━━━━━━━━━\n💡 *Saran:* Segera restock untuk menghindari lost sales."
+        text += "━━━━━━━━━━━━━━━\n💡 *Saran AI:* Segera restock barang-barang di atas agar tidak kehabisan (lost sales) ya Kak!"
         return text
