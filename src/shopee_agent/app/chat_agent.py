@@ -145,33 +145,34 @@ class ChatAgent:
             draft = "Otomasi dihentikan karena terdeteksi kata-kata kasar. Menunggu penanganan manual."
             reasons.append("abusive_language")
         
-        # --- Shopee Policy Enforcement (Anti-PII & Anti-Off-Platform) ---
+        # --- Shopee Policy Advisory (Human-in-the-loop Revision) ---
+        # Instead of hard-blocking, we flag the draft with a WARNING for the human operator to decide.
+        
         # 1. Regex for phone numbers (ID standard)
         phone_pattern = r"(0|62|\+62)[\s\-]?8[1-9][0-9]{6,10}"
         if draft and re.search(phone_pattern, draft):
-            action = "escalate"
-            reasons.append("policy_violation_pii_detected")
-            draft = f"⚠️ [BLOCKED] Draft mengandung nomor telepon.\n\n{draft}"
+            action = "draft_for_approval" # Force human review
+            reasons.append("policy_flag_pii_detected")
+            draft = f"⚠️ [PERINGATAN]: Draft mengandung data pribadi (Nomor HP). Mohon hapus sebelum mengirim.\n\n{draft}"
             
         # 2. Keywords for off-platform transactions
         forbidden_keywords = ["wa.me", "whatsapp", "transfer bank", "rekening", "no rek", "manual", "diluar shopee"]
         if draft and any(k in draft.lower() for k in forbidden_keywords):
-            action = "escalate"
-            reasons.append("policy_violation_off_platform")
-            draft = f"⚠️ [BLOCKED] Draft terdeteksi transaksi luar platform.\n\n{draft}"
+            action = "draft_for_approval" # Force human review
+            reasons.append("policy_flag_off_platform")
+            draft = f"⚠️ [PERINGATAN]: Draft terdeteksi transaksi luar platform. Mohon sesuaikan agar sesuai standar Shopee.\n\n{draft}"
 
-        # --- HITL Confidence Gate (Anti-Error) ---
-        # If urgency is very high or sentiment is very low, force approval regardless of initial classification
+        # --- HITL Sensitivity Gate (Human Review Required) ---
         is_sensitive = False
         if classification.intent in ["complaint", "refund", "cancel_order"]:
             is_sensitive = True
-            reasons.append("sensitive_intent_needs_audit")
+            reasons.append("sensitive_intent_human_verify_required")
 
         # Decision Logic
         if action not in ["escalate", "freeze"]:
             if classification.risk_tier == "high" or is_sensitive:
-                action = "escalate"
-                reasons.append("high_risk_or_sensitive_lock")
+                action = "draft_for_approval" # Human must verify high risk
+                reasons.append("high_risk_or_sensitive_review")
             elif classification.risk_tier == "medium":
                 action = "draft_for_approval"
                 reasons.append("medium_risk_needs_review")
