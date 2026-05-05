@@ -35,9 +35,15 @@ class EventIngestService:
         self.outbox_queue = outbox_queue
 
     def ingest(self, event: EventEnvelope) -> IngestResult:
-        # 1. Save Event
+        # 1. Save Event (Idempotency Check)
         res = self.event_repo.insert_if_new(event)
         
+        # --- Audit Revision: Stop if event was already processed ---
+        if not res.created:
+            # Fetch existing decision to return in result
+            existing_decision = self.decision_repo.get_by_event(event.event_id)
+            return IngestResult(event=res, decision=existing_decision)
+
         # 2. Make Decision & Save
         decision = self.decision_engine.decide(event)
         self.decision_repo.save_decision(decision)
@@ -48,6 +54,6 @@ class EventIngestService:
         
         # 4. Enqueue Action
         if self.outbox_queue and decision.action_request:
-            self.outbox_queue.enqueue(decision.action_request)
+            self.outbox_queue.enqueue(decision.action_request, priority=100)
         
         return IngestResult(event=res, decision=decision)

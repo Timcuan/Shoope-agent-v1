@@ -34,6 +34,11 @@ class LLMGateway(ABC):
     async def generate_response(self, prompt: str) -> str:
         pass
 
+    @abstractmethod
+    async def analyze_media(self, file_path: str, prompt: str) -> str:
+        """Analyze an image or video file and return a description/analysis."""
+        pass
+
 import asyncio
 import logging
 import random
@@ -81,3 +86,6 @@ class ResilientLLM(LLMGateway):
 
     async def generate_response(self, prompt: str) -> str:
         return await self._execute_with_retry("generate_response", prompt)
+
+    async def analyze_media(self, file_path: str, prompt: str) -> str:
+        return await self._execute_with_retry("analyze_media", file_path, prompt)

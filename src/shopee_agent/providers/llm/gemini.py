@@ -139,3 +139,11 @@ Draft the response now:
         """Freeform reasoning for internal agents."""
         response = self.model.generate_content(prompt)
         return response.text.strip()
+
+    async def analyze_media(self, file_path: str, prompt: str) -> str:
+        """Analyze an image using Gemini Vision capabilities."""
+        import PIL.Image
+        img = PIL.Image.open(file_path)
+        # Use the same high-end model (Gemini 1.5 Pro) for vision as well
+        response = self.model.generate_content([prompt, img])
+        return response.text.strip()

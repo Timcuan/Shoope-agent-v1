@@ -107,3 +107,23 @@ Draft a human-like response:
 
     async def generate_response(self, prompt: str) -> str:
         return await self._request([{"role": "user", "content": prompt}])
+
+    async def analyze_media(self, file_path: str, prompt: str) -> str:
+        """Analyze an image using OpenRouter vision-enabled models."""
+        import base64
+        with open(file_path, "rb") as f:
+            encoded_image = base64.b64encode(f.read()).decode("utf-8")
+        
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}
+                    }
+                ]
+            }
+        ]
+        return await self._request(messages)

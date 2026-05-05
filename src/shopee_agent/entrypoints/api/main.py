@@ -71,6 +71,7 @@ def get_stats() -> dict:
         decisions_high = session.scalar(select(func.count(DecisionRecord.id)).where(DecisionRecord.risk_tier == "high")) or 0
         outbox_pending = session.scalar(select(func.count(OutboxRecord.id)).where(OutboxRecord.status == "pending")) or 0
         tasks_open = session.scalar(select(func.count(OperatorTaskRecord.id)).where(OperatorTaskRecord.status == "open")) or 0
+        total_logs = session.scalar(select(func.count(ActivityLogRecord.id))) or 0
         
     return {
         "events": events,
@@ -80,7 +81,8 @@ def get_stats() -> dict:
             "high": decisions_high
         },
         "queue": outbox_pending,
-        "tasks": tasks_open
+        "tasks": tasks_open,
+        "total_logs": total_logs
     }
 
 
