@@ -181,7 +181,7 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
         try:
             parts = callback.data.split(":")
             shop_id = parts[1]
-            await callback.answer("🚀 Processing bulk shipment...")
+            await callback.answer("🚀 Memproses pengiriman massal...")
             await callback.message.edit_text("⏳ _Sedang memproses seluruh pesanan siap kirim..._", parse_mode="Markdown")
             
             with SessionLocal() as session:
@@ -228,7 +228,7 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
             parts = callback.data.split(":")
             shop_id, order_sn = parts[1], parts[2]
             
-            await callback.answer(f"📄 Fetching PDF for {order_sn}...")
+            await callback.answer(f"📄 Menarik label PDF untuk {order_sn}...")
             
             with SessionLocal() as session:
                 client = ShopeeClient("https://partner.shopeemobile.com", "id", "key")
@@ -264,23 +264,27 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
                 new_status = TaskStatus.DISMISSED
     
             if not new_status:
-                await callback.answer("Unknown action", show_alert=True)
+                await callback.answer("❌ Aksi tidak dikenal.", show_alert=True)
                 return
     
             success = supervisor.update_task_status(task_id, new_status)
             if not success:
-                await callback.answer("Task not found", show_alert=True)
+                await callback.answer("❌ Tugas tidak ditemukan.", show_alert=True)
                 return
     
             # Update the message with the new status and keyboard
             task = supervisor.task_repo.get_task(task_id)
             # Use helper from main (but we can't import main here, so we duplicate or move)
             # For now, let's just use a simple format or assume it's moved to a common utils
+            sev_map = {"P0": "🔥 Sangat Penting", "P1": "⚠️ Penting", "HIGH": "🔥 Sangat Penting"}
+            sev_label = sev_map.get(task.severity, "ℹ️ Info")
+            status_map = {"open": "Menunggu", "acknowledged": "Dikerjakan", "resolved": "Selesai", "dismissed": "Diabaikan"}
+            status_label = status_map.get(task.status.lower() if isinstance(task.status, str) else task.status.value.lower(), task.status)
             text = (
-                f"*{task.severity}* | {task.category.upper()}\n"
-                f"🏪 Shop: `{task.shop_id}`\n"
+                f"{sev_label}\n"
+                f"🏠 Toko: `{task.shop_id}`\n"
                 f"📌 *{task.title}*\n"
-                f"Status: `{task.status.upper()}`"
+                f"Status: *{status_label}*"
             )
             
             kb = get_task_keyboard(task_id, task.status)
@@ -290,7 +294,8 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
                 reply_markup=kb,
                 parse_mode="Markdown"
             )
-            await callback.answer(f"Task marked as {new_status.value}")
+            label = {"acknowledged": "Sedang Dikerjakan", "resolved": "Selesai", "dismissed": "Diabaikan", "waiting": "Ditunda"}.get(new_status.value.lower(), new_status.value)
+            await callback.answer(f"✅ Status diperbarui: {label}")
         except Exception as e:
             await callback.answer(f"⚠️ Operation failed: {str(e)}", show_alert=True)
 
@@ -299,7 +304,7 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
         try:
             parts = callback.data.split(":")
             shop_id = parts[1]
-            await callback.answer("📑 Generating PO...")
+            await callback.answer("📝 Sedang menyiapkan file PO...")
             
             with SessionLocal() as session:
                 from shopee_agent.app.inventory_health import InventoryHealthAgent
@@ -357,7 +362,7 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
                 caption = await agent.generate_promo_caption(shop_id, item_id, get_llm_gateway())
                 
                 await callback.message.answer(
-                    f"📱 **AI Generated Promo Caption**\n━━━━━━━━━━━━━━━\n\n"
+                    f"📱 **Caption Promosi dari AI**\n━━━━━━━━━━━━━━━\n\n"
                     f"{caption}\n\n"
                     f"━━━━━━━━━━━━━━━\n"
                     f"💡 _Salin dan gunakan untuk Instagram, TikTok, atau status WhatsApp Anda._",
