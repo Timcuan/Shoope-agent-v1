@@ -1,4 +1,4 @@
-# 🚀 Shopee Intelligence Engine v2.6.5 (Living Elite Edition)
+# 🚀 Shopee Intelligence Engine v3.0.0 (Elite Edition)
 
 [![Status: Production-Ready](https://img.shields.io/badge/Status-Production--Ready-brightgreen.svg)]()
 [![Build: Passed](https://img.shields.io/badge/Build-Passed-blue.svg)]()

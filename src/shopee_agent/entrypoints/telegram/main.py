@@ -141,7 +141,7 @@ async def health(message: Message) -> None:
     
     header = "🏥 *System Status*\n"
     header += f"LLM: `{settings.llm_provider.upper()}`\n"
-    header += f"Version: `v1.0.0-orchestrator`\n"
+    header += f"Version: `v3.0.0 (Elite)`\n"
     
     with SessionLocal() as session:
         log_repo = ActivityLogRepository(session)
@@ -528,7 +528,7 @@ async def sync_single_shop(shop_id: str, llm: LLMGateway | None) -> str:
             
             event_service = EventIngestService(
                 event_repo=EventRepository(session),
-                decision_engine=DecisionEngine(policy_version="v1.0-prod"),
+                decision_engine=DecisionEngine(policy_version="v3.0-prod"),
                 decision_repo=DecisionRepository(session),
                 workflow_engine=WorkflowEngine(),
                 workflow_repo=WorkflowRepository(session),

@@ -51,4 +51,4 @@ graph TD
 - Mendukung agregasi data global (Dashboard) untuk melihat performa seluruh jaringan toko dalam satu layar.
 
 ---
-*Arsitektur ini dioptimalkan untuk skalabilitas dan ketahanan produksi (v2.6.5).*
+*Arsitektur ini dioptimalkan untuk skalabilitas dan ketahanan produksi (v3.0.0).*

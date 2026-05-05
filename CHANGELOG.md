@@ -2,7 +2,7 @@
 
 All notable changes to the Shopee Agent project are documented here.
 
-## [v2.6.5] - 2026-05-05 (Living Elite Assistant)
+## [v3.0.0] - 2026-05-05 (Intelligence Sovereign)
 
 ### UX & Humanization (Elite Feel)
 - **Typing Indicators**: Integrated `ChatAction.TYPING` across all high-latency handlers (AI Analysis, Reporting, Sync) to eliminate the "frozen bot" feel.

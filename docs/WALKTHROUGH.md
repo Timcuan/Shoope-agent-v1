@@ -51,4 +51,4 @@ Sistem bekerja dengan prinsip **Human-In-The-Loop (HITL)**:
 -   `src/shopee_agent/entrypoints/telegram/`: Antarmuka Bot dan Handler pesan.
 
 ---
-*Panduan ini mutakhir per versi 2.6.5 (Living Elite Edition).*
+*Panduan ini mutakhir per versi 3.0.0 (Intelligence Sovereign).*
