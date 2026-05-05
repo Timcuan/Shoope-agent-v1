@@ -13,7 +13,7 @@ from shopee_agent.config.settings import get_settings
 class GeminiProvider(LLMGateway):
     """Google Gemini implementation of LLMGateway."""
 
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-pro") -> None:
+    def __init__(self, api_key: str, model_name: str = "gemini-1.5-flash") -> None:
         settings = get_settings()
         if settings.http_proxy_url:
             os.environ["HTTP_PROXY"] = settings.http_proxy_url

@@ -19,9 +19,10 @@ if [ ! -f ".env" ]; then
     read -p "3. Masukkan Shopee Partner ID (Opsional, tekan Enter untuk lewati): " SHOPEE_ID
     read -p "4. Masukkan Shopee Partner Key (Opsional, tekan Enter untuk lewati): " SHOPEE_KEY
     read -p "5. Masukkan Gemini API Key (Opsional, tekan Enter untuk lewati): " GEMINI_KEY
-    read -p "6. Masukkan OpenRouter API Key (Opsional, tekan Enter untuk lewati): " OPENROUTER_KEY
-    read -p "7. Masukkan PrintNode API Key (Opsional, tekan Enter untuk lewati): " PRINTNODE_KEY
-    read -p "8. Masukkan HTTP Proxy URL (Opsional, khusus VPS Luar Negeri): " HTTP_PROXY
+    read -p "6. Masukkan Model LLM (default: gemini-1.5-flash): " LLM_MODEL
+    read -p "7. Masukkan OpenRouter API Key (Opsional, tekan Enter untuk lewati): " OPENROUTER_KEY
+    read -p "8. Masukkan PrintNode API Key (Opsional, tekan Enter untuk lewati): " PRINTNODE_KEY
+    read -p "9. Masukkan HTTP Proxy URL (Opsional, khusus VPS Luar Negeri): " HTTP_PROXY
 
     # Generate random API key for dashboard
     RANDOM_API_KEY=$(uuidgen || echo "secret_$(date +%s)")
@@ -34,6 +35,7 @@ ADMIN_CHAT_ID=${ADMIN_ID}
 SHOPEE_PARTNER_ID=${SHOPEE_ID:-demo_id}
 SHOPEE_PARTNER_KEY=${SHOPEE_KEY:-demo_key}
 LLM_PROVIDER=gemini
+LLM_MODEL=${LLM_MODEL:-gemini-1.5-flash}
 GEMINI_API_KEY=${GEMINI_KEY:-demo_llm_key}
 OPENROUTER_API_KEY=${OPENROUTER_KEY}
 PRINTNODE_API_KEY=${PRINTNODE_KEY}
