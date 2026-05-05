@@ -1,5 +1,7 @@
 from aiogram import Dispatcher, F
 from aiogram.types import CallbackQuery
+import re
+import json
 
 from shopee_agent.app.operations import OperationsSupervisorAgent
 from shopee_agent.contracts.operations import TaskStatus
@@ -11,6 +13,7 @@ from shopee_agent.persistence.repositories import OrderRepository, ShopTokenRepo
 from shopee_agent.providers.shopee.client import ShopeeClient
 from shopee_agent.providers.shopee.gateway import ShopeeGateway
 from shopee_agent.app.logistics_agent import LogisticsAgent, ShipmentResult
+from shopee_agent.providers.llm.gateway import get_llm_gateway
 
 
 def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) -> None:
@@ -38,7 +41,7 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
             from aiogram.enums import ChatAction
             await callback.bot.send_chat_action(chat_id=callback.message.chat.id, action=ChatAction.TYPING)
             
-            # Use real ChatAgent but for now simulate LLM result
+            # Simulated draft for now, but wrapped in try/except
             draft_text = "Halo kak! Pesanan kakak sedang kami siapkan dan akan segera diserahkan ke kurir hari ini ya. Mohon ditunggu! 😊"
             
             await callback.message.answer(
@@ -48,7 +51,7 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
                 reply_markup=get_chat_keyboard(chat_id, shop_id),
                 parse_mode="Markdown"
             )
-        except Exception as e:
+        except Exception:
             await callback.answer(f"🙏 Waduh, AI-nya lagi pusing. Coba lagi ya Kak!", show_alert=True)
 
     @dp.callback_query(F.data.startswith("chat_quick_ok:"))
@@ -70,11 +73,14 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
             from aiogram.enums import ChatAction
             await callback.bot.send_chat_action(chat_id=callback.message.chat.id, action=ChatAction.TYPING)
             
-            # Use ephemeral session for this action
+            # Use settings for credentials
+            from shopee_agent.config.settings import get_settings
+            settings = get_settings()
             with SessionLocal() as session:
-                client = ShopeeClient("https://partner.shopeemobile.com", "partner_id", "key") # In real app use settings
+                client = ShopeeClient("https://partner.shopeemobile.com", settings.shopee_partner_id, settings.shopee_partner_key)
                 gateway = ShopeeGateway(client, ShopTokenRepository(session))
-                agent = LogisticsAgent(gateway, OrderRepository(session))
+                from shopee_agent.persistence.repositories import LogisticsRepository
+                agent = LogisticsAgent(gateway, OrderRepository(session), LogisticsRepository(session))
                 
                 res = await agent.arrange_shipment(shop_id, order_sn)
                 
@@ -230,10 +236,13 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
             
             await callback.answer(f"📄 Menarik label PDF untuk {order_sn}...")
             
+            from shopee_agent.config.settings import get_settings
+            settings = get_settings()
             with SessionLocal() as session:
-                client = ShopeeClient("https://partner.shopeemobile.com", "id", "key")
+                client = ShopeeClient("https://partner.shopeemobile.com", settings.shopee_partner_id, settings.shopee_partner_key)
                 gateway = ShopeeGateway(client, ShopTokenRepository(session))
-                agent = LogisticsAgent(gateway, OrderRepository(session))
+                from shopee_agent.persistence.repositories import LogisticsRepository
+                agent = LogisticsAgent(gateway, OrderRepository(session), LogisticsRepository(session))
                 
                 pdf_path = await agent.get_label_pdf(shop_id, order_sn)
             
@@ -333,15 +342,30 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
             parts = callback.data.split(":")
             shop_id, item_id = parts[1], parts[2]
             
+            # Extract Q&A from message text
+            msg_text = callback.message.text
+            q_match = re.search(r"Tanya: \"(.*)\"", msg_text)
+            a_match = re.search(r"Jawab: \"(.*)\"", msg_text)
+            
+            if q_match and a_match:
+                q, a = q_match.group(1), a_match.group(1)
+                with SessionLocal() as session:
+                    from shopee_agent.persistence.repositories import ProductKnowledgeRepository
+                    from shopee_agent.contracts.knowledge import FAQEntry
+                    repo = ProductKnowledgeRepository(session)
+                    pk = repo.get_pk(shop_id, item_id)
+                    if pk:
+                        pk.faq.append(FAQEntry(question=q, answer=a))
+                        repo.upsert_pk(pk)
+            
             await callback.answer("✅ Pengetahuan baru diterapkan!")
             await callback.message.edit_text(
                 f"✅ **Telah Dipelajari**\n\nPengetahuan baru telah ditambahkan ke Knowledge Base untuk produk `{item_id}`.\n"
                 f"_Agent sekarang bisa menjawab pertanyaan serupa secara otomatis._",
                 parse_mode="Markdown"
             )
-            # In real app: persistence.add_faq_to_product(shop_id, item_id, q, a)
-        except Exception as e:
-            await callback.answer(f"⚠️ Gagal belajar: {str(e)}", show_alert=True)
+        except Exception:
+            await callback.answer(f"⚠️ Gagal menyimpan pengetahuan baru.", show_alert=True)
 
     @dp.callback_query(F.data.startswith("gen_promo:"))
     async def handle_gen_promo(callback: CallbackQuery) -> None:

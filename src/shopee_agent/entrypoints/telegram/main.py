@@ -297,7 +297,7 @@ def format_task_text(task) -> str:
         f"━━━━━━━━━━━━━━━\n"
         f"{task.summary}\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"Status: *{status_label}*"
+        f"📊 Status: *{status_label}*"
     )
 
 
@@ -345,32 +345,35 @@ async def packing_list_cmd(message: Message) -> None:
     shop_ids = get_shop_ids() or ["demo_shop"]
     shop_id = shop_ids[0]
     
-    with SessionLocal() as session:
-        order_repo = OrderRepository(session)
-        # Fetch 'READY_TO_SHIP' orders
-        orders = order_repo.get_pending_orders(shop_id)
-        
-        if not orders:
-            await message.answer("✅ **Semua pesanan sudah di-packing!**")
-            return
+    try:
+        with SessionLocal() as session:
+            order_repo = OrderRepository(session)
+            # Fetch 'READY_TO_SHIP' orders
+            orders = order_repo.get_pending_orders(shop_id)
             
-        await message.answer(f"📦 **Antrian Packing — {shop_id}**\nTotal: `{len(orders)}` pesanan", parse_mode="Markdown")
-        
-        for order in orders[:5]: # Limit to 5 for readability
-            text = (
-                f"📦 **Order:** `{order.order_sn}`\n"
-                f"👤 Buyer: `{order.buyer_user_id}`\n"
-                f"💰 Total: `Rp {order.total_amount:,.0f}`\n"
-                f"⏰ Bayar: `{order.pay_time.strftime('%H:%M') if order.pay_time else '-'}`"
-            )
-            await message.answer(
-                text, 
-                reply_markup=get_print_options_keyboard(order.order_sn, shop_id), 
-                parse_mode="Markdown"
-            )
-        
-        if len(orders) > 5:
-            await message.answer(f"_...dan {len(orders)-5} pesanan lainnya._")
+            if not orders:
+                await message.answer("✅ **Semua pesanan sudah di-packing!**")
+                return
+                
+            await message.answer(f"📦 **Antrian Packing \u2014 {shop_id}**\nTotal: `{len(orders)}` pesanan", parse_mode="Markdown")
+            
+            for order in orders[:5]: # Limit to 5 for readability
+                text = (
+                    f"📦 **Pesanan:** `{order.order_sn}`\n"
+                    f"👤 Pembeli: `{order.buyer_user_id}`\n"
+                    f"💰 Total: `Rp {order.total_amount:,.0f}`\n"
+                    f"⏰ Bayar: `{order.pay_time.strftime('%H:%M') if order.pay_time else '-'}`"
+                )
+                await message.answer(
+                    text, 
+                    reply_markup=get_print_options_keyboard(order.order_sn, shop_id), 
+                    parse_mode="Markdown"
+                )
+            
+            if len(orders) > 5:
+                await message.answer(f"_...dan {len(orders)-5} pesanan lainnya._")
+    except Exception:
+        await message.answer("❌ Gagal memuat daftar packing. Mohon coba lagi Kak.")
 
 
 @dispatcher.message(Command("find"))
@@ -381,17 +384,20 @@ async def find_cmd(message: Message) -> None:
         return
     
     keyword = parts[1]
-    supervisor = get_supervisor()
-    tasks = supervisor.find_tasks_by_subject(keyword)
-    
-    if not tasks:
-        await message.answer(f"Tidak ditemukan tugas untuk kata kunci `{keyword}`.", parse_mode="Markdown")
-        return
+    try:
+        supervisor = get_supervisor()
+        tasks = supervisor.find_tasks_by_subject(keyword)
         
-    await message.answer(f"🔍 Ditemukan {len(tasks)} tugas untuk `{keyword}`:", parse_mode="Markdown")
-    for task in tasks[:5]:  # limit to 5 results to avoid spam
-        text = format_task_text(task)
-        await message.answer(text, reply_markup=get_task_keyboard(task.task_id, task.status), parse_mode="Markdown")
+        if not tasks:
+            await message.answer(f"Tidak ditemukan tugas untuk kata kunci `{keyword}`.", parse_mode="Markdown")
+            return
+            
+        await message.answer(f"🔍 Ditemukan {len(tasks)} tugas untuk `{keyword}`:", parse_mode="Markdown")
+        for task in tasks[:5]:  # limit to 5 results to avoid spam
+            text = format_task_text(task)
+            await message.answer(text, reply_markup=get_task_keyboard(task.task_id, task.status), parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal mencari tugas. Mohon coba lagi Kak.")
 
 
 @dispatcher.message(Command("report"))
@@ -416,179 +422,190 @@ async def process_audit_month(callback: CallbackQuery) -> None:
     year = int(parts[1])
     month = int(parts[2])
     
-    # 1. Visual Progress
-    await callback.message.edit_text(
-        f"⏳ **Menyusun Laporan...**\n"
-        f"📅 Periode: `{year}-{month:02d}`\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"🔍 *Menganalisis data transaksi...*",
-        parse_mode="Markdown"
-    )
-    
-    agent = get_reporting_agent()
-    
-    with SessionLocal() as session:
-        ledger_repo = FinanceLedgerRepository(session)
-        shop_ids = get_shop_ids()
-        shop_id = shop_ids[0] if shop_ids else "demo_shop"
-        
-        # 2. Simulated Step Update
-        await asyncio.sleep(0.8)
+    try:
+        # 1. Visual Progress
         await callback.message.edit_text(
             f"⏳ **Menyusun Laporan...**\n"
             f"📅 Periode: `{year}-{month:02d}`\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"📉 *Menghitung margin & selisih dana...*",
+            f"🔍 *Menganalisis data transaksi...*",
             parse_mode="Markdown"
         )
         
-        db_rows = ledger_repo.get_ledger_for_period(shop_id, year, month)
-        transactions = []
-        for i, (order, ledger) in enumerate(db_rows):
-            transactions.append(AuditTransaction(
-                row_no=i + 1,
-                received_at=order.pay_time.date() if order.pay_time else None,
-                shipped_at=None,
-                completed_at=None,
-                order_label=order.order_sn[:8],
-                order_sn=order.order_sn,
-                order_amount=order.total_amount,
-                dana_diterima=ledger.final_income,
-                keterangan=f"Status: {order.status}"
-            ))
+        agent = get_reporting_agent()
+        
+        with SessionLocal() as session:
+            ledger_repo = FinanceLedgerRepository(session)
+            shop_ids = get_shop_ids()
+            shop_id = shop_ids[0] if shop_ids else "demo_shop"
+            
+            # 2. Simulated Step Update
+            await asyncio.sleep(0.8)
+            await callback.message.edit_text(
+                f"⏳ **Menyusun Laporan...**\n"
+                f"📅 Periode: `{year}-{month:02d}`\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"📉 *Menghitung margin & selisih dana...*",
+                parse_mode="Markdown"
+            )
+            
+            db_rows = ledger_repo.get_ledger_for_period(shop_id, year, month)
+            transactions = []
+            for i, (order, ledger) in enumerate(db_rows):
+                transactions.append(AuditTransaction(
+                    row_no=i + 1,
+                    received_at=order.pay_time.date() if order.pay_time else None,
+                    shipped_at=None,
+                    completed_at=None,
+                    order_label=order.order_sn[:8],
+                    order_sn=order.order_sn,
+                    order_amount=order.total_amount,
+                    dana_diterima=ledger.final_income,
+                    keterangan=f"Status: {order.status}"
+                ))
 
-        # Fetch detailed activity logs
-        activity_repo = ActivityLogRepository(session)
-        from datetime import datetime
-        start_dt = datetime(year, month, 1)
-        end_dt = datetime(year, month + 1, 1) if month < 12 else datetime(year + 1, 1, 1)
-        activity_logs = activity_repo.get_for_period(shop_id, start_dt, end_dt)
+            # Fetch detailed activity logs
+            activity_repo = ActivityLogRepository(session)
+            from datetime import datetime
+            start_dt = datetime(year, month, 1)
+            end_dt = datetime(year, month + 1, 1) if month < 12 else datetime(year + 1, 1, 1)
+            activity_logs = activity_repo.get_for_period(shop_id, start_dt, end_dt)
 
-        req = ReportRequest(
-            shop_id=shop_id, 
-            year=year, 
-            month=month, 
-            creator=str(callback.from_user.id),
-            transactions=transactions
+            req = ReportRequest(
+                shop_id=shop_id, 
+                year=year, 
+                month=month, 
+                creator=str(callback.from_user.id),
+                transactions=transactions
+            )
+            
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, agent.generate_audit_workbook, req, activity_logs)
+
+        # 3. Final Result Experience
+        summary_text = agent.format_telegram_summary(result)
+        
+        from shopee_agent.app.gsheets_agent import GSheetsAgent
+        gs_agent = GSheetsAgent(settings.google_service_account, settings.google_admin_email)
+        cloud_url = await gs_agent.sync_audit_report(req)
+        
+        from shopee_agent.entrypoints.telegram.keyboards import get_audit_result_keyboard
+        await callback.message.edit_text(
+            summary_text,
+            reply_markup=get_audit_result_keyboard(result.export_id, cloud_url),
+            parse_mode="Markdown"
         )
         
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, agent.generate_audit_workbook, req, activity_logs)
-
-    # 3. Final Result Experience
-    summary_text = agent.format_telegram_summary(result)
-    
-    from shopee_agent.app.gsheets_agent import GSheetsAgent
-    gs_agent = GSheetsAgent(settings.google_service_account, settings.google_admin_email)
-    cloud_url = await gs_agent.sync_audit_report(req)
-    
-    from shopee_agent.entrypoints.telegram.keyboards import get_audit_result_keyboard
-    await callback.message.edit_text(
-        summary_text,
-        reply_markup=get_audit_result_keyboard(result.export_id, cloud_url),
-        parse_mode="Markdown"
-    )
-    
-    # Send the physical file as backup
-    doc = FSInputFile(result.file_path)
-    await bot.send_document(
-        callback.message.chat.id,
-        doc,
-        caption=f"📊 *Audit Backup* | {year}-{month:02d}",
-        parse_mode="Markdown"
-    )
-    await callback.answer("Audit Berhasil Terbit! ✅")
+        # Send the physical file as backup
+        from aiogram.types import FSInputFile
+        doc = FSInputFile(result.file_path)
+        await bot.send_document(
+            callback.message.chat.id,
+            doc,
+            caption=f"📊 *Cadangan Audit* | {year}-{month:02d}",
+            parse_mode="Markdown"
+        )
+        await callback.answer("Audit Berhasil Terbit! ✅")
+    except Exception:
+        await callback.answer("❌ Gagal menyusun laporan audit.")
+        await callback.message.edit_text("❌ Terjadi kesalahan saat menyusun laporan audit. Mohon coba lagi nanti.")
 
 async def sync_single_shop(shop_id: str, llm: LLMGateway | None) -> str:
     """Helper to sync one shop's data."""
-    with SessionLocal() as session:
-        # Event & Decision Orchestration Wiring
-        from shopee_agent.app.events import EventIngestService
-        from shopee_agent.app.decisions import DecisionEngine
-        from shopee_agent.app.workflows import WorkflowEngine
-        from shopee_agent.persistence.repositories import (
-            EventRepository, DecisionRepository, WorkflowRepository
-        )
-        
-        from shopee_agent.app.queue import OutboxQueue
-        
-        supervisor = OperationsSupervisorAgent(OperatorTaskRepository(session))
-        
-        event_service = EventIngestService(
-            event_repo=EventRepository(session),
-            decision_engine=DecisionEngine(policy_version="v1.0-prod"),
-            decision_repo=DecisionRepository(session),
-            workflow_engine=WorkflowEngine(),
-            workflow_repo=WorkflowRepository(session),
-            outbox_queue=OutboxQueue(session),
-        )
-
-        order_agent = OrderAgent(
-            order_repo=OrderRepository(session),
-            ledger_repo=FinanceLedgerRepository(session),
-            supervisor=supervisor,
-            event_service=event_service,
-            llm=llm
-        )
-        # 1. Sync Orders (Real logic)
-        from shopee_agent.providers.shopee.client import ShopeeClient
-        from shopee_agent.providers.shopee.gateway import ShopeeGateway
-        client = ShopeeClient(settings.shopee_base_url, settings.shopee_partner_id, settings.shopee_partner_key)
-        shopee_gateway = ShopeeGateway(client, ShopTokenRepository(session))
-        
-        # Fetch last 3 days to ensure no misses
-        time_to = int(datetime.now().timestamp())
-        time_from = time_to - (3600 * 24 * 3)
-        orders = await shopee_gateway.get_order_list(shop_id, time_from=time_from, time_to=time_to)
-        order_result = await order_agent.ingest_orders(orders, shop_id)
-        
-        # 1.1 Sync Finances for pending settlements
-        ledger_repo = FinanceLedgerRepository(session)
-        unsettled = ledger_repo.get_unsettled_ledger_orders(shop_id)
-        # Limit to 10 for performance during sync, background task will catch others
-        for sn in unsettled[:10]:
-            await order_agent.sync_order_finances(shop_id, sn, shopee_gateway)
-        
-        # 2. Sync Returns
-        dispute_agent = DisputeAgent(
-            shopee_gateway=shopee_gateway,
-            dispute_repo=ReturnDisputeRepository(session),
-            supervisor=supervisor,
-            llm=llm
-        )
-        dispute_count = await dispute_agent.sync_returns(shop_id)
-        
-        # Health & Expiry Check
-        h = HealthAgent(ShopTokenRepository(session)).get_shop_health(shop_id)
-        if h["status"] in ["CRITICAL", "EXPIRED"]:
-            await bot.send_message(
-                settings.admin_chat_id,
-                f"🚨 **ALERTA P0: TOKEN KEDALUWARSA**\n🏪 Toko: `{h['shop_id']}`\nStatus: *{h['status']}*\n\n"
-                "Segera lakukan re-autentikasi agar operasional tidak terputus!",
-                reply_markup=get_main_menu_keyboard(),
-                parse_mode="Markdown"
+    try:
+        with SessionLocal() as session:
+            # Event & Decision Orchestration Wiring
+            from shopee_agent.app.events import EventIngestService
+            from shopee_agent.app.decisions import DecisionEngine
+            from shopee_agent.app.workflows import WorkflowEngine
+            from shopee_agent.persistence.repositories import (
+                EventRepository, DecisionRepository, WorkflowRepository
+            )
+            
+            from shopee_agent.app.queue import OutboxQueue
+            
+            supervisor = OperationsSupervisorAgent(OperatorTaskRepository(session))
+            
+            event_service = EventIngestService(
+                event_repo=EventRepository(session),
+                decision_engine=DecisionEngine(policy_version="v1.0-prod"),
+                decision_repo=DecisionRepository(session),
+                workflow_engine=WorkflowEngine(),
+                workflow_repo=WorkflowRepository(session),
+                outbox_queue=OutboxQueue(session),
             )
 
-        # 3. Sync Products to Knowledge Base
-        pk_agent = ProductKnowledgeAgent(ProductKnowledgeRepository(session))
-        inv_repo = InventoryRepository(session)
-        try:
-            raw_items = await shopee_gateway.get_item_list(shop_id)
-            for raw_item in raw_items:
-                pk_agent.upsert_product_from_api(shop_id, raw_item)
-                item_id = str(raw_item.get("item_id", raw_item.get("id", "")))
-                inv_items = inv_repo.get_items_for_shop(shop_id)
-                pk_agent.enrich_from_inventory(shop_id, item_id, inv_items)
-        except Exception as e:
-            logger.warning(f"[Sync] Product KB sync failed for {shop_id}: {e}")
+            order_agent = OrderAgent(
+                order_repo=OrderRepository(session),
+                ledger_repo=FinanceLedgerRepository(session),
+                supervisor=supervisor,
+                event_service=event_service,
+                llm=llm
+            )
+            # 1. Sync Orders (Real logic)
+            from shopee_agent.providers.shopee.client import ShopeeClient
+            from shopee_agent.providers.shopee.gateway import ShopeeGateway
+            client = ShopeeClient(settings.shopee_base_url, settings.shopee_partner_id, settings.shopee_partner_key)
+            shopee_gateway = ShopeeGateway(client, ShopTokenRepository(session))
+            
+            # Fetch last 3 days to ensure no misses
+            time_to = int(datetime.now().timestamp())
+            time_from = time_to - (3600 * 24 * 3)
+            orders = await shopee_gateway.get_order_list(shop_id, time_from=time_from, time_to=time_to)
+            order_result = await order_agent.ingest_orders(orders, shop_id)
+            
+            # 1.1 Sync Finances for pending settlements
+            ledger_repo = FinanceLedgerRepository(session)
+            unsettled = ledger_repo.get_unsettled_ledger_orders(shop_id)
+            # Limit to 10 for performance during sync, background task will catch others
+            for sn in unsettled[:10]:
+                await order_agent.sync_order_finances(shop_id, sn, shopee_gateway)
+            
+            # 2. Sync Returns
+            dispute_agent = DisputeAgent(
+                shopee_gateway=shopee_gateway,
+                dispute_repo=ReturnDisputeRepository(session),
+                supervisor=supervisor,
+                llm=llm
+            )
+            dispute_count = await dispute_agent.sync_returns(shop_id)
+            
+            # Health & Expiry Check
+            h = HealthAgent(ShopTokenRepository(session)).get_shop_health(shop_id)
+            if h["status"] in ["CRITICAL", "EXPIRED"]:
+                await bot.send_message(
+                    settings.admin_chat_id,
+                    f"🚨 **NOTIFIKASI P0: TOKEN KEDALUWARSA**\n🏪 Toko: `{h['shop_id']}`\nStatus: *{h['status']}*\n\n"
+                    "Segera lakukan re-autentikasi agar operasional tidak terputus!",
+                    reply_markup=get_main_menu_keyboard(),
+                    parse_mode="Markdown"
+                )
+
+            # 3. Sync Products to Knowledge Base
+            pk_agent = ProductKnowledgeAgent(ProductKnowledgeRepository(session))
+            inv_repo = InventoryRepository(session)
+            try:
+                raw_items = await shopee_gateway.get_item_list(shop_id)
+                for raw_item in raw_items:
+                    pk_agent.upsert_product_from_api(shop_id, raw_item)
+                    item_id = str(raw_item.get("item_id", raw_item.get("id", "")))
+                    inv_items = inv_repo.get_items_for_shop(shop_id)
+                    pk_agent.enrich_from_inventory(shop_id, item_id, inv_items)
+            except Exception as e:
+                logger.warning(f"[Sync] Product KB sync failed for {shop_id}: {e}")
+
+            return f"✅ **{shop_id}:** Berhasil sinkron."
+    except Exception as e:
+        logger.error(f"[Sync] Global sync failure for {shop_id}: {e}")
+        return f"❌ **{shop_id}:** Gagal sinkron."
 
         # 4. SLA Alerts (HITL — send alert with approval buttons, never auto-ship)
         from shopee_agent.entrypoints.telegram.keyboards import get_ship_approval_keyboard
         async def send_sla_alert(order_sn: str, shop_id: str, hours_left: float, severity_icon: str) -> None:
             text = (
-                f"{severity_icon} *SLA ALERT — Konfirmasi Pengiriman*\n\n"
+                f"🛡️ *PERINGATAN SLA — Konfirmasi Pengiriman*\n\n"
                 f"🏪 Toko: `{shop_id}`\n"
-                f"📋 Order: `{order_sn}`\n"
+                f"📋 Pesanan: `{order_sn}`\n"
                 f"⏰ SLA Tersisa: *{hours_left:.1f} jam*\n\n"
                 f"_Tekan tombol di bawah untuk konfirmasi atau tunda._"
             )
@@ -630,34 +647,43 @@ def get_dashboard_keyboard() -> InlineKeyboardMarkup:
 async def dashboard_cmd(message: Message) -> None:
     """Show interactive global dashboard."""
     await bot.send_chat_action(message.chat.id, "typing")
-    agent = get_analytics_agent()
-    report = agent.get_kpi_report_for_range(30)
-    text = agent.format_dashboard_text(report)
-    await message.answer(text, reply_markup=get_dashboard_keyboard(), parse_mode="Markdown")
+    try:
+        agent = get_analytics_agent()
+        report = agent.get_kpi_report_for_range(30)
+        text = agent.format_dashboard_text(report)
+        await message.answer(text, reply_markup=get_dashboard_keyboard(), parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat dashboard. Mohon coba lagi Kak.")
 
 
 @dispatcher.callback_query(lambda c: c.data.startswith("db_"))
 async def dashboard_callback(callback: CallbackQuery) -> None:
     """Refresh dashboard with selected range."""
-    days = int(callback.data.split("_")[1].replace("d", ""))
-    agent = get_analytics_agent()
-    report = agent.get_kpi_report_for_range(days)
-    
-    range_text = "Harian" if days == 1 else "Mingguan" if days == 7 else "Bulanan"
-    text = agent.format_dashboard_text(report)
-    text = text.replace("Dashboard Global", f"Dashboard Global ({range_text})")
-    
-    await callback.message.edit_text(text, reply_markup=get_dashboard_keyboard(), parse_mode="Markdown")
-    await callback.answer()
+    try:
+        days = int(callback.data.split("_")[1].replace("d", ""))
+        agent = get_analytics_agent()
+        report = agent.get_kpi_report_for_range(days)
+        
+        range_text = "Harian" if days == 1 else "Mingguan" if days == 7 else "Bulanan"
+        text = agent.format_dashboard_text(report)
+        text = text.replace("Dashboard Global", f"Dashboard Global ({range_text})")
+        
+        await callback.message.edit_text(text, reply_markup=get_dashboard_keyboard(), parse_mode="Markdown")
+        await callback.answer()
+    except Exception:
+        await callback.answer("❌ Gagal memperbarui dashboard.")
 
 
 @dispatcher.message(Command("briefing"))
 async def briefing_cmd(message: Message) -> None:
     """Manual trigger for daily briefing."""
     await bot.send_chat_action(message.chat.id, "typing")
-    agent = get_analytics_agent()
-    text = agent.get_daily_briefing()
-    await message.answer(text, parse_mode="Markdown")
+    try:
+        agent = get_analytics_agent()
+        text = agent.get_daily_briefing()
+        await message.answer(text, parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat ringkasan. Mohon coba lagi Kak.")
 
 @dispatcher.message(Command("diagnose"))
 async def diagnose_cmd(message: Message) -> None:
@@ -706,24 +732,27 @@ async def sync_cmd(message: Message) -> None:
 async def run_background_sync_flow(message: Message) -> None:
     """Actual heavy lifting for sync, offloaded from the handler."""
     async with SYNC_SEMAPHORE:
-        shop_ids = get_shop_ids() or ["demo_shop"]
-        llm = get_llm_gateway()
-        
-        # 1. Parallel Execution
-        tasks = [sync_single_shop(sid, llm) for sid in shop_ids]
-        results = await asyncio.gather(*tasks)
-        
-        # 2. Results Notification
-        summary_text = "".join(results)
-        await message.answer(
-            f"✨ **SINKRONISASI SELESAI** ✨\n"
-            f"━━━━━━━━━━━━━━━\n\n"
-            f"{summary_text}"
-            f"━━━━━━━━━━━━━━━\n"
-            "💡 *Tip:* Gunakan /inbox untuk melihat tugas mendesak baru.",
-            reply_markup=get_post_sync_keyboard(),
-            parse_mode="Markdown"
-        )
+        try:
+            shop_ids = get_shop_ids() or ["demo_shop"]
+            llm = get_llm_gateway()
+            
+            # 1. Parallel Execution
+            tasks = [sync_single_shop(sid, llm) for sid in shop_ids]
+            results = await asyncio.gather(*tasks)
+            
+            # 2. Results Notification
+            summary_text = "".join(results)
+            await message.answer(
+                f"✨ **SINKRONISASI SELESAI** ✨\n"
+                f"━━━━━━━━━━━━━━━\n\n"
+                f"{summary_text}"
+                f"━━━━━━━━━━━━━━━\n"
+                "💡 *Tip:* Gunakan /inbox untuk melihat tugas mendesak baru.",
+                reply_markup=get_post_sync_keyboard(),
+                parse_mode="Markdown"
+            )
+        except Exception:
+            await message.answer("❌ Gagal menyelesaikan sinkronisasi. Mohon coba lagi nanti Kak.")
 
 
 @dispatcher.message(Command("chat"))
@@ -1211,78 +1240,86 @@ async def promo_cmd(message: Message) -> None:
     shop_ids = get_shop_ids() or ["demo_shop"]
     shop_id = shop_ids[0]
     
-    with SessionLocal() as session:
-        from shopee_agent.persistence.repositories import ProductKnowledgeRepository
-        from shopee_agent.app.product_knowledge_agent import ProductKnowledgeAgent
-        
-        repo = ProductKnowledgeRepository(session)
-        pk_agent = ProductKnowledgeAgent(repo)
-        
-        # Pick 3 random products or top selling
-        from shopee_agent.persistence.models import ProductKnowledgeRecord
-        from sqlalchemy import func
-        items = session.scalars(select(ProductKnowledgeRecord).where(ProductKnowledgeRecord.shop_id == shop_id).order_by(func.random()).limit(3)).all()
-        
-        if not items:
-            await message.answer("📭 Belum ada produk di database. Silakan `/sync` terlebih dahulu.")
-            return
+    try:
+        with SessionLocal() as session:
+            from shopee_agent.persistence.repositories import ProductKnowledgeRepository
+            from shopee_agent.app.product_knowledge_agent import ProductKnowledgeAgent
             
-        await message.answer("📱 **Pilih produk untuk dibuatkan caption promosi:**", parse_mode="Markdown")
-        for itm in items:
-            builder = InlineKeyboardBuilder()
-            builder.button(text="✍️ Buat Caption", callback_data=f"gen_promo:{shop_id}:{itm.item_id}")
-            await message.answer(f"📦 **{itm.name}**\nItem ID: `{itm.item_id}`", reply_markup=builder.as_markup(), parse_mode="Markdown")
+            repo = ProductKnowledgeRepository(session)
+            pk_agent = ProductKnowledgeAgent(repo)
+            
+            from shopee_agent.persistence.models import ProductKnowledgeRecord
+            from sqlalchemy import func
+            items = session.scalars(select(ProductKnowledgeRecord).where(ProductKnowledgeRecord.shop_id == shop_id).order_by(func.random()).limit(3)).all()
+            
+            if not items:
+                await message.answer("📭 Belum ada produk di database. Silakan `/sync` terlebih dahulu.")
+                return
+                
+            await message.answer("📱 **Pilih produk untuk dibuatkan caption promosi:**", parse_mode="Markdown")
+            for itm in items:
+                builder = InlineKeyboardBuilder()
+                builder.button(text="✍️ Buat Caption", callback_data=f"gen_promo:{shop_id}:{itm.item_id}")
+                await message.answer(f"📦 **{itm.name}**\nItem ID: `{itm.item_id}`", reply_markup=builder.as_markup(), parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat daftar promo. Mohon coba lagi Kak.")
 
 @dispatcher.message(F.photo)
 async def handle_photo(message: Message) -> None:
     """Process incoming photos using Vision AI."""
     await bot.send_chat_action(message.chat.id, "typing")
     
-    # Download the highest resolution photo
-    photo = message.photo[-1]
-    file = await bot.get_file(photo.file_id)
-    
-    os.makedirs("./data/media", exist_ok=True)
-    file_path = f"./data/media/{photo.file_id}.jpg"
-    await bot.download_file(file.file_path, file_path)
-    
-    from shopee_agent.app.vision_agent import VisionAgent
-    vision = VisionAgent(get_llm_gateway())
-    
-    # Context-aware prompt
-    prompt = "Apa yang Anda lihat di foto ini? Jika ini berkaitan dengan stok atau pengiriman produk, berikan analisis teknisnya."
-    if message.caption:
-        prompt = f"Instruksi User: {message.caption}\n\nAnalisis foto ini berdasarkan instruksi tersebut."
+    try:
+        # Download the highest resolution photo
+        photo = message.photo[-1]
+        file = await bot.get_file(photo.file_id)
         
-    analysis = await vision.analyze_image(file_path, prompt)
-    await message.reply(f"👁️ **Analisis AI Vision:**\n\n{analysis}", parse_mode="Markdown")
+        os.makedirs("./data/media", exist_ok=True)
+        file_path = f"./data/media/{photo.file_id}.jpg"
+        await bot.download_file(file.file_path, file_path)
+        
+        from shopee_agent.app.vision_agent import VisionAgent
+        vision = VisionAgent(get_llm_gateway())
+        
+        # Context-aware prompt
+        prompt = "Apa yang Anda lihat di foto ini? Jika ini berkaitan dengan stok atau pengiriman produk, berikan analisis teknisnya."
+        if message.caption:
+            prompt = f"Instruksi User: {message.caption}\n\nAnalisis foto ini berdasarkan instruksi tersebut."
+            
+        analysis = await vision.analyze_image(file_path, prompt)
+        await message.reply(f"👁️ **Analisis Vision AI:**\n\n{analysis}", parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Maaf Kak, gagal menganalisis foto ini. Mohon coba lagi.")
 
 @dispatcher.message(F.voice)
 async def handle_voice(message: Message) -> None:
     """Process incoming voice messages."""
     await bot.send_chat_action(message.chat.id, "typing")
     
-    voice = message.voice
-    file = await bot.get_file(voice.file_id)
-    
-    os.makedirs("./data/media", exist_ok=True)
-    file_path = f"./data/media/{voice.file_id}.ogg"
-    await bot.download_file(file.file_path, file_path)
-    
-    from shopee_agent.app.voice_agent import VoiceAgent
-    voice_agent = VoiceAgent(get_llm_gateway())
-    
-    transcription = await voice_agent.process_voice(file_path)
-    await message.reply(f"🎤 **Transkripsi Suara:**\n\n_\"{transcription}\"_", parse_mode="Markdown")
-    
-    # Follow up with text handler logic to treat voice as a command
-    message.text = transcription
-    if any(k in transcription for k in ["Tugas", "Jadwal", "Laporan", "Ulasan", "Cek Stok", "Uang", "Daftar Toko", "Pengaturan"]):
-        await menu_button_handler(message)
-    elif transcription.startswith("/"):
-        await message.answer("ℹ️ Maaf Kak, perintah suara hanya mendukung menu utama. Untuk fitur lainnya, mohon diketik ya.", parse_mode="Markdown")
-    else:
-        await fallback_handler(message)
+    try:
+        voice = message.voice
+        file = await bot.get_file(voice.file_id)
+        
+        os.makedirs("./data/media", exist_ok=True)
+        file_path = f"./data/media/{voice.file_id}.ogg"
+        await bot.download_file(file.file_path, file_path)
+        
+        from shopee_agent.app.voice_agent import VoiceAgent
+        voice_agent = VoiceAgent(get_llm_gateway())
+        
+        transcription = await voice_agent.process_voice(file_path)
+        await message.reply(f"🎤 **Transkripsi Suara:**\n\n_\"{transcription}\"_", parse_mode="Markdown")
+        
+        # Follow up with text handler logic to treat voice as a command
+        message.text = transcription
+        if any(k in transcription for k in ["Tugas", "Jadwal", "Laporan", "Ulasan", "Cek Stok", "Uang", "Daftar Toko", "Pengaturan"]):
+            await menu_button_handler(message)
+        elif transcription.startswith("/"):
+            await message.answer("ℹ️ Maaf Kak, perintah suara hanya mendukung menu utama. Untuk fitur lainnya, mohon diketik ya.", parse_mode="Markdown")
+        else:
+            await fallback_handler(message)
+    except Exception:
+        await message.answer("❌ Maaf Kak, gagal memproses pesan suara. Mohon coba bicara lebih jelas atau ketik pesannya ya.")
 
 @dispatcher.message(Command("reviews"))
 async def reviews_cmd(message: Message) -> None:
@@ -1291,32 +1328,35 @@ async def reviews_cmd(message: Message) -> None:
     shop_ids = get_shop_ids() or ["demo_shop"]
     shop_id = shop_ids[0]
     
-    with SessionLocal() as session:
-        from shopee_agent.app.review_agent import ReviewAgent
-        agent = ReviewAgent(session, get_llm_gateway())
-        
-        # 1. Sync & Draft (Simulation)
-        await agent.draft_all_pending(shop_id)
-        
-        pending = agent.get_pending_replies(shop_id)
-        
-        if not pending:
-            await message.answer("✅ **Semua ulasan sudah dibalas.**")
-            return
+    try:
+        with SessionLocal() as session:
+            from shopee_agent.app.review_agent import ReviewAgent
+            agent = ReviewAgent(session, get_llm_gateway())
             
-        await message.answer(f"⭐ **Manajemen Ulasan — {shop_id}**\nMenunggu persetujuan: `{len(pending)}` ulasan", parse_mode="Markdown")
-        
-        for rev in pending[:3]:
-            stars = "⭐" * rev.rating_star
-            text = (
-                f"{stars}\n"
-                f"💬 **Buyer:** \"{rev.comment}\"\n"
-                f"✍️ **Draft AI:** \"{rev.reply_comment}\""
-            )
-            builder = InlineKeyboardBuilder()
-            builder.button(text="✅ Kirim Balasan", callback_data=f"rev_approve:{rev.review_id}")
-            builder.button(text="✏️ Edit", callback_data=f"rev_edit:{rev.review_id}")
-            await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+            # 1. Sync & Draft (Simulation)
+            await agent.draft_all_pending(shop_id)
+            
+            pending = agent.get_pending_replies(shop_id)
+            
+            if not pending:
+                await message.answer("✅ **Semua ulasan sudah dibalas.**")
+                return
+                
+            await message.answer(f"⭐ **Manajemen Ulasan — {shop_id}**\nMenunggu persetujuan: `{len(pending)}` ulasan", parse_mode="Markdown")
+            
+            for rev in pending[:3]:
+                stars = "⭐" * rev.rating_star
+                text = (
+                    f"{stars}\n"
+                    f"💬 **Pembeli:** \"{rev.comment}\"\n"
+                    f"✍️ **Draf AI:** \"{rev.reply_comment}\""
+                )
+                builder = InlineKeyboardBuilder()
+                builder.button(text="✅ Kirim Balasan", callback_data=f"rev_approve:{rev.review_id}")
+                builder.button(text="✏️ Edit", callback_data=f"rev_edit:{rev.review_id}")
+                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat manajemen ulasan. Mohon coba lagi Kak.")
 
 @dispatcher.message(Command("boost"))
 async def boost_status_cmd(message: Message) -> None:
