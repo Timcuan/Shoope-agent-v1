@@ -410,7 +410,7 @@ async def process_audit_month(callback: CallbackQuery) -> None:
     
     # 1. Visual Progress
     await callback.message.edit_text(
-        f"⏳ **Processing Audit...**\n"
+        f"⏳ **Menyusun Laporan...**\n"
         f"📅 Periode: `{year}-{month:02d}`\n"
         f"━━━━━━━━━━━━━━━\n"
         f"🔍 *Menganalisis data transaksi...*",
@@ -427,7 +427,7 @@ async def process_audit_month(callback: CallbackQuery) -> None:
         # 2. Simulated Step Update
         await asyncio.sleep(0.8)
         await callback.message.edit_text(
-            f"⏳ **Processing Audit...**\n"
+            f"⏳ **Menyusun Laporan...**\n"
             f"📅 Periode: `{year}-{month:02d}`\n"
             f"━━━━━━━━━━━━━━━\n"
             f"📉 *Menghitung margin & selisih dana...*",
@@ -1251,7 +1251,12 @@ async def handle_voice(message: Message) -> None:
     
     # Follow up with text handler logic to treat voice as a command
     message.text = transcription
-    await message_handler(message)
+    if any(k in transcription for k in ["Tugas", "Jadwal", "Laporan", "Ulasan", "Cek Stok", "Uang", "Daftar Toko", "Pengaturan"]):
+        await menu_button_handler(message)
+    elif transcription.startswith("/"):
+        await message.answer("ℹ️ Maaf Kak, perintah suara hanya mendukung menu utama. Untuk fitur lainnya, mohon diketik ya.", parse_mode="Markdown")
+    else:
+        await fallback_handler(message)
 
 @dispatcher.message(Command("reviews"))
 async def reviews_cmd(message: Message) -> None:
