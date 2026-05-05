@@ -32,13 +32,39 @@
 
 ## 🛠️ Tech Stack & Architecture
 
+![Intelligence Sovereign Architecture](/Users/aaa/.gemini/antigravity/brain/36c0ec50-89c5-444b-b248-a91de409dd32/shopee_intelligence_architecture_3d_1777959438110.png)
+
 Sistem ini dibangun dengan arsitektur **Agentic Micro-Services** yang modular:
 
+```mermaid
+graph TB
+    subgraph "Sovereign Intelligence Engine"
+        direction TB
+        subgraph "Interface"
+            Bot[Telegram Elite Assistant]
+        end
+        subgraph "Orchestration"
+            Supervisor[Operations Supervisor]
+            Engine[Decision Engine v3.0]
+        end
+        subgraph "Autonomous Agents"
+            Order[Order Agent]
+            Chat[Chat Agent]
+            Finance[Finance Agent]
+            Dispute[Dispute Agent]
+        end
+    end
+    SAPI[Shopee API v2] <--> Supervisor
+    LLM[Gemini 2.5 Flash] <--> Engine
+    Engine <--> Order & Chat & Finance & Dispute
+```
+
 - **Core**: Python 3.10+ (Asynchronous using `aiogram` & `asyncio`)
-- **Intelligence**: Google Gemini (1.5 Flash/Pro) for Vision, Voice, and Reasoning.
+- **Intelligence**: Google Gemini 2.5 Flash (Vision, Voice, and Reasoning).
 - **Database**: SQLite (WAL Mode) with SQLAlchemy ORM for institutional resilience.
 - **Infrastructure**: Docker & Docker Compose for rapid deployment and isolation.
 - **Connectivity**: Shopee API v2 (Global Compliance) with auto-token repair mechanism.
+
 
 ---
 
