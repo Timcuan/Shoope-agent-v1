@@ -1,78 +1,97 @@
-# 🚀 Shopee Agent v1.4.0 (Hardened Edition)
+# 🚀 Shopee Intelligence Engine v2.6.5 (Living Elite Edition)
 
-**Executive-Grade autonomous Shopee management ecosystem with Vision Intelligence and Financial Compliance.**
+[![Status: Production-Ready](https://img.shields.io/badge/Status-Production--Ready-brightgreen.svg)]()
+[![Build: Passed](https://img.shields.io/badge/Build-Passed-blue.svg)]()
+[![Security: Hardened](https://img.shields.io/badge/Security-Hardened-orange.svg)]()
+[![LLM: Gemini Multimodal](https://img.shields.io/badge/AI-Gemini%20Vision%20%2F%20Voice-purple.svg)]()
 
-Shopee Agent is a production-grade orchestration engine designed for high-volume Shopee sellers. It provides full system autonomy, strict financial reconciliation, and AI-driven risk management—all wrapped in a premium glassmorphic executive dashboard.
-
----
-
-## ✨ Key Features (Hardened)
-
-- **👁️ Vision Intelligence**: Automated visual analysis of buyer evidence photos in disputes using Gemini Vision.
-- **🛡️ Autonomous Dispute Defense**: "God-Tier" triage combining weight analysis, logistics status, and visual damage detection.
-- **🚨 SLA Watchdog**: Proactive monitoring of shipping deadlines with P0/P1 alerts to prevent Shopee penalties.
-- **⚖️ Financial Integrity**: Full Shopee API v2 Escrow compliance with standardized 14-column monthly GSheets audit reports.
-- **🔒 AI Safety Guardrails**: Outbound chat filtering for PII (Phone numbers) and off-platform transaction detection.
-- **📈 Premium Executive Dashboard**: High-fidelity glassmorphic UI with live activity feeds and animated KPI tracking.
-- **🏪 Multi-Shop Orchestration**: Unified management of multiple shops with strict data isolation.
-- **📦 Logistics Perfection**: Arrange shipments (`/ship`) and download Waybill PDFs (`/label`) directly from Telegram.
-- **🔥 Institutional Resilience**: Worker watchdogs, auto-token repair, and persistent event outbox.
+**Shopee Intelligence Engine** adalah ekosistem manajemen toko Shopee otonom kelas perusahaan yang menggabungkan Kecerdasan Buatan (Vision & Voice), Kepatuhan Finansial yang ketat, dan pengalaman pengguna Telegram yang ramah (Elite Personal Assistant).
 
 ---
 
-## 🛠️ Architecture
+## ✨ Fitur Unggulan (Elite Experience)
 
-The system is built on a modular "Agentic" architecture:
-- **`OperationsSupervisor`**: Task lifecycle management and prioritization.
-- **`LogisticsAgent`**: Waybill generation and shipment orchestration.
-- **`AnalyticsAgent`**: Financial and operational KPI aggregation.
-- **`NotificationAgent`**: Proactive alert dispatching logic.
-- **`ChatAgent`**: LLM-powered buyer message classification and drafting.
+### 🤖 Kecerdasan Multimodal & Otonom
+- **👁️ Vision AI Analysis**: Analisis otomatis foto bukti sengketa dan kondisi stok menggunakan Gemini Vision.
+- **🎤 Voice Command Routing**: Kontrol operasional toko menggunakan pesan suara (Voice-to-Command).
+- **🧠 Interactive KB Learning**: Fitur "Ajarkan AI" yang memungkinkan operator memperbarui basis pengetahuan produk langsung dari Telegram.
+- **🛡️ Autonomous Dispute Defense**: Pertahanan otomatis terhadap klaim pembeli berdasarkan data berat paket, sejarah logistik, dan analisis visual.
 
----
+### 💼 Operasional & Finansial (Zero-Error)
+- **⚖️ Financial Reconciliation**: Audit otomatis sesuai standar Shopee API v2 dengan output Excel 14-kolom yang mendetail.
+- **📈 Executive Dashboard**: Visualisasi KPI (Omzet, Pertumbuhan, Rate Komplain) secara real-time dengan UI premium.
+- **📦 Logistics Orchestration**: Cetak label pengiriman (PDF) dan atur penjemputan (`/ship`) secara instan.
+- **🚀 Product Booster**: Otomasi "Naikkan Produk" untuk 5 produk terlaris setiap 4 jam untuk traffic maksimal.
 
-## 🚀 1-Click Setup (Sangat Mudah!)
-
-Sistem ini didesain agar sangat mudah dijalankan tanpa perlu mengonfigurasi banyak hal secara manual. Cukup gunakan satu perintah di terminal Anda:
-
-```bash
-make setup
-```
-
-**Apa yang dilakukan `make setup`?**
-1. Mengecek kesiapan komputer Anda (Python/Docker).
-2. Meminta Token Telegram dan API Key secara interaktif, lalu membuatkan file `.env` otomatis.
-3. Menyiapkan dan melakukan migrasi basis data SQLite.
-4. Menyiapkan kontainer Docker secara instan.
-
-Setelah *setup* selesai, Anda bisa menjalankan seluruh agen dengan perintah:
-```bash
-make start
-```
-
-Untuk melihat status atau log agen Anda secara *real-time*:
-```bash
-make logs
-```
-
-Untuk menghentikan sistem:
-```bash
-make stop
-```
+### 💎 User Experience (Living Assistant)
+- **🇮🇩 Full Indonesian Localization**: Seluruh antarmuka menggunakan bahasa Indonesia yang natural dan ramah bagi operator non-teknis.
+- **⚡ Zero-Hang Architecture**: Penggunaan *typing indicators* dan penanganan error global memastikan bot selalu responsif dan stabil.
+- **📥 Task-Oriented Inbox**: Manajemen tugas berbasis prioritas (🔴 Sangat Mendesak, 📊 Menunggu) untuk memastikan tidak ada pesanan yang terlewat.
 
 ---
 
-## 🧪 Testing
-The system comes with a comprehensive test suite (71+ tests) covering E2E flows, API resilience, and domain logic.
-```bash
-pytest
-```
+## 🛠️ Tech Stack & Architecture
+
+Sistem ini dibangun dengan arsitektur **Agentic Micro-Services** yang modular:
+
+- **Core**: Python 3.10+ (Asynchronous using `aiogram` & `asyncio`)
+- **Intelligence**: Google Gemini (1.5 Flash/Pro) for Vision, Voice, and Reasoning.
+- **Database**: SQLite (WAL Mode) with SQLAlchemy ORM for institutional resilience.
+- **Infrastructure**: Docker & Docker Compose for rapid deployment and isolation.
+- **Connectivity**: Shopee API v2 (Global Compliance) with auto-token repair mechanism.
 
 ---
 
-## 📄 Documentation
-- [CHANGELOG.md](CHANGELOG.md): History of all development phases.
-- [Walkthrough](docs/walkthrough.md): Guided tour of features.
+## 🚀 Instalasi & Setup Cepat (1-Click)
+
+Kami merancang sistem ini agar dapat dijalankan dalam hitungan menit tanpa konfigurasi teknis yang rumit.
+
+### Prasyarat
+- Docker & Docker Compose terinstal di komputer Anda.
+- Token Telegram Bot (dari [@BotFather](https://t.me/botfather)).
+
+### Langkah-langkah
+1. **Clone & Setup**:
+   ```bash
+   git clone https://github.com/Timcuan/Shoope-agent-v1.git
+   cd Shoope-agent-v1
+   make setup
+   ```
+   *Perintah di atas akan mengecek ketergantungan sistem dan membuat file `.env` secara interaktif.*
+
+2. **Jalankan Sistem**:
+   ```bash
+   make start
+   ```
+
+3. **Cek Status**:
+   ```bash
+   make logs
+   ```
 
 ---
-*Developed by Antigravity AI for Shopee Sellers.*
+
+## 📱 Panduan Perintah Telegram (User Guide)
+
+Gunakan perintah-perintah berikut untuk mengontrol asisten Anda:
+
+| Perintah | Fungsi |
+| :--- | :--- |
+| `/start` | Memulai sesi dan menampilkan menu utama interaktif. |
+| `/inbox` | Melihat tugas mendesak hari ini (Pesanan baru, Komplain, Stok rendah). |
+| `/dashboard` | Menampilkan ringkasan performa toko (Omzet & Pertumbuhan). |
+| `/rekap` | Mengunduh laporan keuangan bulanan dalam format Excel/GSheets. |
+| `/chat` | Menganalisis pesan pembeli dan membuat draf balasan cerdas. |
+| `/diagnose` | Pengecekan mandiri kesehatan sistem (DB, LLM, API Shopee). |
+| `/sync` | Memicu sinkronisasi manual data toko di latar belakang. |
+
+---
+
+## 📄 Dokumentasi & Changelog
+- [CHANGELOG.md](CHANGELOG.md): Sejarah lengkap pembaruan fitur.
+- [docs/walkthrough.md](docs/walkthrough.md): Panduan mendalam fitur-fitur agen.
+- [docs/api_compliance.md](docs/api_compliance.md): Detail implementasi kepatuhan API Shopee v2.
+
+---
+*Developed with ❤️ by Antigravity AI for Elite Shopee Sellers.*
+*Copyright © 2026 Timcuan. All rights reserved.*

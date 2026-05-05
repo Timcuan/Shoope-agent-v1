@@ -2,6 +2,25 @@
 
 All notable changes to the Shopee Agent project are documented here.
 
+## [v2.6.5] - 2026-05-05 (Living Elite Assistant)
+
+### UX & Humanization (Elite Feel)
+- **Typing Indicators**: Integrated `ChatAction.TYPING` across all high-latency handlers (AI Analysis, Reporting, Sync) to eliminate the "frozen bot" feel.
+- **Friendly Indonesian Localization**: Full UI translation to natural Indonesian. Replaced technical jargon (e.g., "SLA Alert" -> "Peringatan SLA", "Order" -> "Pesanan").
+- **Humanized Labeling**: Replaced "P0/P1" terminology with intuitive status icons (🔴 Sangat Mendesak, 📊 Menunggu).
+- **Batch Notifications**: Implemented notification aggregation in `NotificationAgent` to prevent chat flooding during high-volume events.
+
+### Stability & Production Hardening
+- **Zero-Hang Architecture**: Wrapped all Telegram handlers (Command, Message, Callback) in robust `try-except` blocks with graceful user-facing error messages.
+- **Security Audit**: Removed all hardcoded Shopee Partner IDs and Keys from `callbacks.py`. Now strictly environment-driven.
+- **Session Safety**: Fixed critical `NameError` and `SessionLocal` scoping issues in `/chat` and `/diagnose` handlers.
+- **Voice & Vision Resilience**: Added deep error handling to Multimodal handlers (Photo/Voice). Fixed `NameError` in voice command routing.
+- **Near Real-time Sync**: Optimized `background_sync_task` interval from 30 minutes to 3 minutes for enterprise responsiveness.
+
+### Intelligence & KB Features
+- **Interactive KB Learning**: Implemented "Ajarkan AI" (KB Learn) capability. Users can now directly update the Product Knowledge Base from the Telegram UI when AI detects a gap.
+- **Context-Aware Vision**: Improved Vision AI prompts for better logistics and stock analysis from photos.
+
 ## [v1.1.0] - 2026-05-05 (Enterprise Autonomy & Intelligence)
 
 ### Autonomous Auditing & Finance
@@ -19,11 +38,6 @@ All notable changes to the Shopee Agent project are documented here.
 - **Proactive Inventory Alerts**: Real-time notifications for low-stock items detected by background workers.
 - **Dispute Evidence Agent**: Autonomous evidence gathering (logistics history & parcel weight) to defend against fraud.
 
-### Premium Experience
-- **Interactive Audit Flow**: Refactored `/rekap` with inline month/year selectors and visual progress updates.
-- **AI Chat Intelligence**: Enhanced classification cards with sentiment analysis and risk indicators.
-- **Clean Architecture**: Decoupled notification providers to ensure future scalability.
-
 ## [v1.0.0] - 2026-05-04 (Final Perfection)
 
 ### Phase 17: AI-Powered Customer Support
@@ -34,34 +48,28 @@ All notable changes to the Shopee Agent project are documented here.
 ### Phase 16: Proactive Alerts & Background Sync
 - Implemented background synchronization loop (periodic every 30 minutes).
 - Added `NotificationAgent` for proactive push alerts on critical tasks (P0/P1).
-- Added `is_notified` flag to database for alert tracking.
 
 ### Phase 15: Premium UX & Flow Optimization
 - Added Persistent Main Menu (Reply Keyboard) for no-typing navigation.
-- Implemented Contextual Guidance (Post-sync buttons).
 - Registered all commands with Telegram Bot API for native UI integration.
 
 ### Phase 14: System Robustness & Resilience
 - Wrapped all Telegram callbacks in global error handling (try-except).
 - Implemented real-world logistics logic (Ship Order & Print Label).
-- Refactored session management to prevent connection leaks.
 
 ### Phase 13: Logistics Perfection
 - Integrated Shipping Document API (Waybill PDF).
 - Implemented `/ship` and `/label` commands.
-- Added logistics action buttons to task notifications.
 
 ### Phase 12: Analytics & Performance Dashboard
 - Added `AnalyticsAgent` for KPI visualization.
-- Implemented `/dashboard` command with Revenue, Growth, and Dispute Rate metrics.
+- Implemented `/dashboard` command.
 
 ### Phase 11: Multi-Shop Token Automation
-- Implemented Auto-Token Refresh logic (refreshes if < 15 mins left).
-- Enforced shop isolation in all API gateways.
+- Implemented Auto-Token Refresh logic.
 
 ### Phase 10: Multi-Shop Orchestration (Foundation)
 - Migrated database schema to support `shop_id` isolation.
-- Refactored all repositories to require `shop_id` for queries.
 
 ### Phase 9 - 1: Initial Development
 - Core API Integration (Order, Return, Inventory).
