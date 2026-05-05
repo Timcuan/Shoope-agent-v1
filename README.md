@@ -127,45 +127,47 @@ Sistem bekerja dengan prinsip **Human-In-The-Loop (HITL)** untuk menjamin keaman
 
 ---
 
-## 📂 Struktur Proyek (Comprehensive Overview)
+## 📂 Struktur Proyek (The Grand Blueprint)
 
-Sistem ini dirancang dengan modularitas tinggi untuk memudahkan pemeliharaan dan skalabilitas:
+Sistem ini menggunakan arsitektur **Hexagonal / Onion Architecture** yang dimodifikasi untuk pola Agentic Workflow. Berikut adalah rincian fungsional dari setiap komponen:
 
-```text
-.
-├── 📁 alembic/            # Migrasi Database (Versioning)
-├── 📁 data/               # Persistent Data (SQLite DB, Logs, Archives)
-├── 📁 docs/               # Dokumentasi Teknis & Panduan
-├── 📁 src/                # Kode Sumber Utama
-│   └── shopee_agent/
-│       ├── 🧠 app/        # Logika Bisnis & Autonomous Agents
-│       │   ├── analytics_agent.py   # Analisis Pertumbuhan & KPI
-│       │   ├── chat_agent.py        # Brain untuk Chat & NLP
-│       │   ├── finance_agent.py     # Audit & Rekonsiliasi
-│       │   ├── order_agent.py       # Manajemen Lifecycle Pesanan
-│       │   ├── logistics_agent.py   # Integrasi Pengiriman & PrintNode
-│       │   └── ... (20+ Specialized Agents)
-│       ├── 🔌 providers/    # Integrasi Pihak Ketiga
-│       │   ├── shopee/      # Shopee API v2 (Auth, Client, Gateway)
-│       │   ├── llm/         # Resilient LLM (Gemini 2.5 Flash)
-│       │   └── notifications/ # Telegram & Multi-channel Alerting
-│       ├── 🏛️ persistence/  # Layer Data & Persistence
-│       │   ├── models.py    # Skema Tabel Database
-│       │   └── repositories.py # Data Access Object (DAO) Pattern
-│       ├── 🎮 entrypoints/  # Entry Layer (Interfaces)
-│       │   ├── telegram/    # Handler Bot, Keyboards, & UI
-│       │   ├── api/         # FastAPI Endpoints (Webhook)
-│       │   └── worker/      # Background Tasks (Celery-like)
-│       └── 📄 contracts/    # Schema & Tipe Data (Pydantic)
-├── 📁 tests/              # Unit & Integration Testing
-├── 📄 .env.example        # Template Konfigurasi Lingkungan
-├── 📄 Dockerfile          # Definisi Container Image
-├── 📄 docker-compose.yml  # Orkestrasi Layanan (API + Bot + Worker)
-├── 📄 Makefile            # Pintasan Perintah (setup, start, logs)
-├── 📄 pyproject.toml      # Manajemen Dependensi & Versi
-├── 📄 setup.sh            # Skrip Instalasi Interaktif (1-Click)
-└── 📄 start.sh            # Skrip Eksekusi Entrypoints
+### 1. Root Configuration & Dev-Ops
+-   `📄 .env.example`: Blueprint seluruh rahasia sistem (API Keys, DB URL, Proxy).
+-   `📄 Dockerfile` & `docker-compose.yml`: Standarisasi lingkungan produksi menggunakan kontainerisasi.
+-   `📄 Makefile`: Abstraksi perintah kompleks menjadi satu kata (`make setup`, `make build`, `make start`).
+-   `📄 setup.sh`: Setup wizard interaktif yang memandu user dari nol hingga bot menyala.
+-   `📁 alembic/`: Mengelola evolusi skema database SQLite agar data lama tidak hilang saat update kode.
+
+### 2. 🧠 Autonomous Agents (`src/shopee_agent/app/`)
+Ini adalah "Otak" dari sistem, tempat logika otonom berada:
+-   `🤖 order_agent.py`: Memantau setiap pesanan baru dan mendeteksi anomali SLA.
+-   `🤖 chat_agent.py`: NLP Engine yang menganalisis sentimen pembeli dan merancang draf balasan.
+-   `🤖 finance_agent.py`: Auditor internal yang menghitung laba bersih per transaksi.
+-   `🤖 dispute_agent.py`: Pengacara otomatis untuk menangani sengketa dan retur.
+-   `🤖 vision_agent.py`: Mata sistem untuk menganalisis bukti foto paket/produk.
+-   `🤖 gsheets_agent.py`: Sinkronisasi data audit ke Google Sheets secara real-time.
+-   `🤖 task_orchestrator.py`: Dirigen yang mengatur antrean tugas antar agen.
+-   *...dan 20+ agen spesifik lainnya (Analytics, Booster, Maintenance, dll).*
+
+### 3. 🔌 External Providers (`src/shopee_agent/providers/`)
+Layer abstraksi untuk berinteraksi dengan dunia luar:
+-   `🌐 shopee/`: Implementasi protokol Shopee API v2 (Client, Auth, & Auto-Refresh Token).
+-   `🧠 llm/`: Gateway tangguh ke Gemini 2.5 Flash dengan mekanisme *Auto-Retry* dan *Provider Fallback*.
+-   `🔔 notifications/`: Dispatcher pesan ke Telegram Bot dan integrasi PrintNode (Cloud Printing).
+
+### 4. 🏛️ Persistence & Data Layer (`src/shopee_agent/persistence/`)
+Layer yang menjamin integritas data:
+-   `💾 models.py`: Definisi entitas data (Order, Chat, KB, User, Event).
+-   `💾 repositories.py`: Implementasi Repository Pattern untuk pemisahan logika kueri SQL dari logika bisnis.
+-   `💾 session.py`: Manajemen koneksi database dengan dukungan WAL (Write-Ahead Logging) Mode untuk akses cepat.
+
+### 5. 🎮 Entrypoints (`src/shopee_agent/entrypoints/`)
+Gerbang interaksi user dan sistem:
+-   `📱 telegram/`: UI Layer yang mengelola bot, keyboard interaktif, dan format pesan yang cantik.
+-   `🌐 api/`: Webhook receiver untuk menerima notifikasi real-time dari server Shopee.
+-   `⚙️ worker/`: Proses latar belakang yang menjalankan tugas berat (seperti pembuatan rekap bulanan) tanpa mengganggu responsivitas bot.
 ```
+
 
 
 
