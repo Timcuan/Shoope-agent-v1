@@ -119,18 +119,23 @@ class DisputeAgent:
         self.dispute_repo.update_analysis(data.return_sn, recommendation, risk_score)
         
         # Create Operator Task
-        severity = TaskSeverity.P1 if risk_score > 0.7 or data.amount > 200000 else TaskSeverity.P2
+        # --- Revision: Hardened HITL scoring ---
+        severity = TaskSeverity.P2
+        if risk_score > 0.8: severity = TaskSeverity.P0
+        elif risk_score > 0.5 or data.amount > 500000: severity = TaskSeverity.P1
         
-        # God-Tier Escalation: P0 for proven physical mismatch (Fraud Signal)
-        if evidence.get("weight_mismatch"):
+        # God-Tier Escalation: P0 for proven physical mismatch or lack of evidence
+        if evidence.get("weight_mismatch") or (len(data.evidence_urls) == 0 and data.amount > 100000):
             severity = TaskSeverity.P0
+            summary += "\n🚨 **DETEKSI ANOMALI**: Berat fisik tidak sesuai atau bukti pembeli nihil."
+
         task = OperatorTask(
             task_id=f"dispute_{data.return_sn}",
             category="DISPUTE",
             subject_id=data.return_sn,
             shop_id=data.shop_id,
             severity=severity,
-            title=f"🛡️ Dispute: {data.reason}",
+            title=f"🛡️ Dispute [{severity}]: {data.reason}",
             summary=(
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"📦 **INFO PESANAN**\n"

@@ -160,11 +160,18 @@ class ChatAgent:
             reasons.append("policy_violation_off_platform")
             draft = f"⚠️ [BLOCKED] Draft terdeteksi transaksi luar platform.\n\n{draft}"
 
+        # --- HITL Confidence Gate (Anti-Error) ---
+        # If urgency is very high or sentiment is very low, force approval regardless of initial classification
+        is_sensitive = False
+        if classification.intent in ["complaint", "refund", "cancel_order"]:
+            is_sensitive = True
+            reasons.append("sensitive_intent_needs_audit")
+
         # Decision Logic
         if action not in ["escalate", "freeze"]:
-            if classification.risk_tier == "high":
+            if classification.risk_tier == "high" or is_sensitive:
                 action = "escalate"
-                reasons.append("high_risk_tier")
+                reasons.append("high_risk_or_sensitive_lock")
             elif classification.risk_tier == "medium":
                 action = "draft_for_approval"
                 reasons.append("medium_risk_needs_review")
