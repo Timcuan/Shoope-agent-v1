@@ -840,55 +840,62 @@ async def returns_cmd(message: Message) -> None:
     await bot.send_chat_action(message.chat.id, "typing")
     shop_ids = get_shop_ids() or ["demo_shop"]
     
-    with SessionLocal() as session:
-        repo = ReturnDisputeRepository(session)
-        text = "⚖️ **Daftar Komplain & Pengembalian Aktif:**\n\n"
-        found = False
-        
-        for shop_id in shop_ids:
-            returns = repo.get_active_returns(shop_id)
-            if not returns:
-                continue
+    try:
+        with SessionLocal() as session:
+            repo = ReturnDisputeRepository(session)
+            text = "⚖️ **Daftar Komplain & Pengembalian Aktif:**\n\n"
+            found = False
             
-            found = True
-            text += f"🏪 *Toko:* `{shop_id}`\n"
-            for r in returns:
-                from sqlalchemy import select
-                from shopee_agent.persistence.models import ReturnDisputeRecord
-                record = session.scalar(
-                    select(ReturnDisputeRecord).where(ReturnDisputeRecord.return_sn == r.return_sn)
-                )
-                risk_emoji = "🔴" if record.risk_score > 0.7 else "🟡"
+            for shop_id in shop_ids:
+                returns = repo.get_active_returns(shop_id)
+                if not returns:
+                    continue
                 
-                rec_text = "TIDAK ADA"
-                if record.agent_recommendation:
-                    rec_text = record.agent_recommendation.upper()
+                found = True
+                text += f"🎪 *Toko:* `{shop_id}`\n"
+                for r in returns:
+                    record = session.scalar(
+                        select(ReturnDisputeRecord).where(ReturnDisputeRecord.return_sn == r.return_sn)
+                    )
+                    if not record:
+                        continue
+                    risk_emoji = "🔴" if record.risk_score and record.risk_score > 0.7 else "🟡"
                     
-                text += (
-                    f"{risk_emoji} *{r.return_sn}* - Rp {r.amount:,.0f}\n"
-                    f"Alasan: `{r.reason}`\n"
-                    f"Saran AI: `{rec_text}`\n"
-                    f"/find_{r.return_sn}\n\n"
-                )
-        
-        if not found:
-            await message.answer("✅ Yey! Tidak ada komplain aktif saat ini Kak.")
-        else:
-            await message.answer(text, parse_mode="Markdown")
+                    rec_text = "Menunggu analisis"
+                    if record.agent_recommendation:
+                        rec_text = record.agent_recommendation.upper()
+                        
+                    text += (
+                        f"{risk_emoji} *{r.return_sn}* - Rp {r.amount:,.0f}\n"
+                        f"Alasan: `{r.reason}`\n"
+                        f"Saran AI: `{rec_text}`\n"
+                        f"/find_{r.return_sn}\n\n"
+                    )
+            
+            if not found:
+                await message.answer("✅ Yey! Tidak ada komplain aktif saat ini Kak.")
+            else:
+                await message.answer(text, parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat data komplain. Mohon coba lagi Kak.")
 
 
 @dispatcher.message(Command("stock"))
 async def stock_cmd(message: Message) -> None:
     """Show predictive inventory health."""
     await bot.send_chat_action(message.chat.id, "typing")
-    shop_id = "demo_shop" # In production, get from context
+    shop_ids = get_shop_ids() or ["demo_shop"]
+    shop_id = shop_ids[0]
     
-    with SessionLocal() as session:
-        supervisor = get_supervisor()
-        agent = InventoryHealthAgent(session, supervisor)
-        alerts = await agent.check_health(shop_id)
-        text = agent.get_stock_status_text(alerts, shop_id)
-        await message.answer(text, parse_mode="Markdown")
+    try:
+        with SessionLocal() as session:
+            supervisor = get_supervisor()
+            agent = InventoryHealthAgent(session, supervisor)
+            alerts = await agent.check_health(shop_id)
+            text = agent.get_stock_status_text(alerts, shop_id)
+            await message.answer(text, parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat data stok. Mohon coba lagi Kak.")
 
 @dispatcher.message(Command("ship"))
 async def ship_cmd(message: Message) -> None:
@@ -898,8 +905,9 @@ async def ship_cmd(message: Message) -> None:
         return
     
     order_sn = parts[1]
-    # In a real app, we'd lookup the shop_id for this order_sn
-    await message.answer(f"📦 Menyiapkan pengiriman untuk `{order_sn}`...", reply_markup=get_logistics_keyboard(order_sn, "demo_shop"), parse_mode="Markdown")
+    shop_ids = get_shop_ids() or ["demo_shop"]
+    shop_id = shop_ids[0]
+    await message.answer(f"📦 Menyiapkan pengiriman untuk `{order_sn}`...", reply_markup=get_logistics_keyboard(order_sn, shop_id), parse_mode="Markdown")
 
 
 @dispatcher.message(Command("chats"))
@@ -916,38 +924,45 @@ async def label_cmd(message: Message) -> None:
         return
     
     order_sn = parts[1]
-    await message.answer(f"📄 Menarik resi untuk pesanan `{order_sn}`...", reply_markup=get_logistics_keyboard(order_sn, "demo_shop"), parse_mode="Markdown")
+    shop_ids = get_shop_ids() or ["demo_shop"]
+    shop_id = shop_ids[0]
+    await message.answer(f"📄 Menarik resi untuk pesanan `{order_sn}`...", reply_markup=get_logistics_keyboard(order_sn, shop_id), parse_mode="Markdown")
 
 @dispatcher.message(Command("escrow"))
 async def escrow_cmd(message: Message) -> None:
+    await bot.send_chat_action(message.chat.id, "typing")
     parts = message.text.split()
     if len(parts) < 2:
         await message.answer("ℹ️ Cara pakai: `/escrow <nomor_pesanan>`", parse_mode="Markdown")
         return
     
     order_sn = parts[1]
-    with SessionLocal() as session:
-        repo = FinanceLedgerRepository(session)
-        ledger = repo.session.scalar(
-            select(FinanceLedgerRecord).where(FinanceLedgerRecord.order_sn == order_sn)
-        )
-        
-        if not ledger:
-            await message.answer(f"❌ Data keuangan untuk `{order_sn}` tidak ditemukan.", parse_mode="Markdown")
-            return
+    try:
+        with SessionLocal() as session:
+            repo = FinanceLedgerRepository(session)
+            ledger = session.scalar(
+                select(FinanceLedgerRecord).where(FinanceLedgerRecord.order_sn == order_sn)
+            )
             
-        text = (
-            f"💰 **Rincian Keuangan — {order_sn}**\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"💵 Escrow: `Rp {ledger.escrow_amount:,.0f}`\n"
-            f"📉 Komisi: `-Rp {ledger.commission_fee:,.0f}`\n"
-            f"📉 Service Fee: `-Rp {ledger.service_fee:,.0f}`\n"
-            f"🚚 Ongkir: `-Rp {ledger.shipping_fee:,.0f}`\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"✨ **Income Bersih: Rp {ledger.final_income:,.0f}**\n"
-            f"Status: `{ledger.settlement_status.upper()}`\n"
-        )
-        await message.answer(text, parse_mode="Markdown")
+            if not ledger:
+                await message.answer(f"❌ Data keuangan untuk `{order_sn}` tidak ditemukan.", parse_mode="Markdown")
+                return
+                
+            text = (
+                f"💰 **Rincian Keuangan — {order_sn}**\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"💵 Escrow: `Rp {ledger.escrow_amount:,.0f}`\n"
+                f"📉 Komisi: `-Rp {ledger.commission_fee:,.0f}`\n"
+                f"📉 Biaya Layanan: `-Rp {ledger.service_fee:,.0f}`\n"
+                f"🚚 Ongkir: `-Rp {ledger.shipping_fee:,.0f}`\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"✨ **Income Bersih: Rp {ledger.final_income:,.0f}**\n"
+                f"Status: `{ledger.settlement_status.upper()}`\n"
+            )
+            await message.answer(text, parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat data keuangan. Mohon coba lagi Kak.")
+
 @dispatcher.message(Command("bulk_ship"))
 async def bulk_ship_cmd(message: Message) -> None:
     """Find all READY_TO_SHIP orders and propose bulk shipment."""
@@ -1034,7 +1049,7 @@ async def kb_audit_cmd(message: Message) -> None:
         unresolved = chat_repo.get_unresolved_sessions(shop_id)
         
         if not unresolved:
-            await message.answer("✅ **Knowledge Base Audit Selesai.** Semua chat hari ini teratasi dengan baik.")
+            await message.answer("✅ **Audit Knowledge Base Selesai.** Semua chat hari ini teratasi dengan baik.")
             return
             
         await message.answer(f"🔍 Menganalisis `{len(unresolved)}` chat yang belum teratasi...")
@@ -1065,15 +1080,13 @@ async def kb_audit_cmd(message: Message) -> None:
             if gap and item_id != "unknown":
                 gaps_found += 1
                 text = (
-                    f"💡 **AI Learning Opportunity**\n"
+                    f"💡 **Peluang Pembelajaran AI**\n"
                     f"📦 Produk: `{item_id}`\n"
                     f"❓ Tanya: \"{gap['question']}\"\n"
                     f"📝 Jawab: \"{gap['answer']}\"\n\n"
                     f"Alasan: {gap['reason']}"
                 )
                 builder = InlineKeyboardBuilder()
-                # Encoded data for approval: learn:item_id:question_hash:answer_hash
-                # For demo, we'll use a simpler callback or state
                 builder.button(text="✅ Terapkan ke KB", callback_data=f"kb_learn:{shop_id}:{item_id}")
                 builder.button(text="❌ Abaikan", callback_data="kb_ignore")
                 await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
@@ -1088,25 +1101,28 @@ async def finance_cmd(message: Message) -> None:
     shop_ids = get_shop_ids() or ["demo_shop"]
     shop_id = shop_ids[0]
     
-    with SessionLocal() as session:
-        from shopee_agent.app.finance_agent import FinanceAgent
-        from shopee_agent.persistence.repositories import FinanceLedgerRepository, OperatorTaskRepository
-        from shopee_agent.app.operations import OperationsSupervisorAgent
-        
-        agent = FinanceAgent(FinanceLedgerRepository(session), OperationsSupervisorAgent(OperatorTaskRepository(session)))
-        flash = agent.get_daily_flash(shop_id)
-        
-        text = (
-            f"📊 **Ringkasan Harian — {shop_id}**\n"
-            f"━━━━━━━━━━━━━━━\n\n"
-            f"📦 **Pesanan Baru:** `{flash['order_count']}`\n"
-            f"💰 **Total Omzet:** `Rp {flash['total_revenue']:,.0f}`\n"
-            f"✨ **Income Bersih:** `Rp {flash['total_income']:,.0f}`\n"
-            f"🚚 **Biaya Ongkir:** `Rp {flash['total_shipping']:,.0f}`\n\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"💡 *Tip:* Gunakan /report untuk download Excel lengkap bulan ini."
-        )
-        await message.answer(text, parse_mode="Markdown")
+    try:
+        with SessionLocal() as session:
+            from shopee_agent.app.finance_agent import FinanceAgent
+            from shopee_agent.persistence.repositories import FinanceLedgerRepository, OperatorTaskRepository
+            from shopee_agent.app.operations import OperationsSupervisorAgent
+            
+            agent = FinanceAgent(FinanceLedgerRepository(session), OperationsSupervisorAgent(OperatorTaskRepository(session)))
+            flash = agent.get_daily_flash(shop_id)
+            
+            text = (
+                f"📊 **Ringkasan Harian — {shop_id}**\n"
+                f"━━━━━━━━━━━━━━━\n\n"
+                f"📦 **Pesanan Baru:** `{flash['order_count']}`\n"
+                f"💰 **Total Omzet:** `Rp {flash['total_revenue']:,.0f}`\n"
+                f"✨ **Income Bersih:** `Rp {flash['total_income']:,.0f}`\n"
+                f"🚚 **Biaya Ongkir:** `Rp {flash['total_shipping']:,.0f}`\n\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"💡 *Tip:* Gunakan /report untuk download Excel lengkap bulan ini."
+            )
+            await message.answer(text, parse_mode="Markdown")
+    except Exception:
+        await message.answer("❌ Gagal memuat ringkasan keuangan. Mohon coba lagi Kak.")
 
 @dispatcher.message(Command("printer"))
 async def printer_cmd(message: Message) -> None:
