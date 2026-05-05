@@ -273,15 +273,31 @@ async def link(message: Message) -> None:
 
 
 def format_task_text(task) -> str:
-    severity_icon = "🔴" if task.severity == "P0" else "🟠" if task.severity == "P1" else "🟡"
+    # Ubah severity dari P0/P1/HIGH menjadi bahasa manusia
+    if task.severity in ["P0", "P1", "HIGH"]:
+        sev_label = "🔥 Sangat Penting"
+    elif task.severity in ["P2", "MEDIUM"]:
+        sev_label = "⚠️ Penting"
+    else:
+        sev_label = "ℹ️ Info"
+        
+    # Ubah status jadi lebih ramah
+    status_map = {
+        "open": "Menunggu Tindakan",
+        "acknowledged": "Sedang Dikerjakan",
+        "resolved": "Selesai",
+        "dismissed": "Diabaikan"
+    }
+    status_label = status_map.get(task.status.lower(), task.status)
+    
     return (
-        f"{severity_icon} *{task.severity}* | {task.category.upper()}\n"
+        f"{sev_label}\n"
         f"🏪 Toko: `{task.shop_id}`\n"
         f"📌 *{task.title}*\n"
         f"━━━━━━━━━━━━━━━\n"
         f"{task.summary}\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"Status: `{task.status.upper()}`"
+        f"Status: *{status_label}*"
     )
 
 
@@ -304,10 +320,10 @@ async def inbox(message: Message) -> None:
     supervisor = get_supervisor()
     tasks = supervisor.get_inbox_page(page=1)
     if not tasks:
-        await message.answer("📭 Inbox kosong!")
+        await message.answer("📭 Yey! Semua tugas sudah selesai Kak!")
         return
     
-    await message.answer("📥 **Exception Inbox (Halaman 1)**", parse_mode="Markdown")
+    await message.answer("📥 **Tugas Hari Ini (Halaman 1)**", parse_mode="Markdown")
     for task in tasks:
         text = format_task_text(task)
         await message.answer(text, reply_markup=get_task_keyboard(task.task_id, task.status), parse_mode="Markdown")
@@ -1221,18 +1237,20 @@ async def analytics_cmd(message: Message) -> None:
             
         await message.answer(text, parse_mode="Markdown")
 
-@dispatcher.message(F.text.in_(["📋 Agenda", "📥 Inbox", "🔄 Sync All", "📊 Dashboard", "🏥 Health", "🏪 Shops"]))
+@dispatcher.message(F.text.in_([
+    "📥 Tugas Hari Ini", "📅 Jadwal & Agenda", "📈 Laporan Penjualan", 
+    "⭐ Ulasan Pembeli", "📦 Cek Stok", "💰 Uang Masuk", "🏪 Daftar Toko", "⚙️ Pengaturan"
+]))
 async def menu_button_handler(message: Message) -> None:
     text = message.text
-    if "Agenda" in text: await agenda(message)
-    elif "Inbox" in text: await inbox(message)
-    elif "Sync" in text: await sync_cmd(message)
-    elif "Dashboard" in text: await dashboard_cmd(message)
-    elif "Analytics" in text: await analytics_cmd(message)
-    elif "Printer" in text: await printer_cmd(message)
-    elif "Reviews" in text: await reviews_cmd(message)
-    elif "Health" in text: await health(message)
-    elif "Shops" in text: await shops_cmd(message)
+    if "Tugas" in text: await inbox(message)
+    elif "Jadwal" in text: await agenda(message)
+    elif "Laporan" in text: await analytics_cmd(message)
+    elif "Ulasan" in text: await reviews_cmd(message)
+    elif "Cek Stok" in text: await stock_cmd(message)
+    elif "Uang" in text: await dashboard_cmd(message)
+    elif "Daftar Toko" in text: await shops_cmd(message)
+    elif "Pengaturan" in text: await help_cmd(message)
 
 @dispatcher.message(Command("promo"))
 async def promo_cmd(message: Message) -> None:
