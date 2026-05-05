@@ -895,26 +895,24 @@ async def ship_cmd(message: Message) -> None:
 @dispatcher.message(Command("chats"))
 async def chats_cmd(message: Message) -> None:
     await bot.send_chat_action(message.chat.id, "typing")
-    # Simulating fetching chat list
-    # In real app we'd fetch from gateway
-    await message.answer("💬 **Active Conversations**\n━━━━━━━━━━━━━━━\n\n1. `Buyer_001`: \"Kapan pesanan saya sampai?\"\n2. `Buyer_002`: \"Bisa minta foto asli?\"\n\nSelect a chat to reply:", parse_mode="Markdown")
+    await message.answer("💬 **Percakapan Aktif:**\n━━━━━━━━━━━━━━━\n\n1. `Pembeli_001`: \"Kapan pesanan saya sampai kak?\"\n2. `Pembeli_002`: \"Bisa minta foto asli barangnya?\"\n\nPilih chat untuk membalas:", parse_mode="Markdown")
 
 
 @dispatcher.message(Command("label"))
 async def label_cmd(message: Message) -> None:
     parts = message.text.split()
     if len(parts) < 2:
-        await message.answer("Usage: /label <order_sn>")
+        await message.answer("ℹ️ Cara pakai: `/label <nomor_pesanan>`", parse_mode="Markdown")
         return
     
     order_sn = parts[1]
-    await message.answer(f"📄 Fetching label for `{order_sn}`...", reply_markup=get_logistics_keyboard(order_sn, "demo_shop"), parse_mode="Markdown")
+    await message.answer(f"📄 Menarik resi untuk pesanan `{order_sn}`...", reply_markup=get_logistics_keyboard(order_sn, "demo_shop"), parse_mode="Markdown")
 
 @dispatcher.message(Command("escrow"))
 async def escrow_cmd(message: Message) -> None:
     parts = message.text.split()
     if len(parts) < 2:
-        await message.answer("Usage: `/escrow <order_sn>`", parse_mode="Markdown")
+        await message.answer("ℹ️ Cara pakai: `/escrow <nomor_pesanan>`", parse_mode="Markdown")
         return
     
     order_sn = parts[1]
@@ -957,7 +955,7 @@ async def bulk_ship_cmd(message: Message) -> None:
             return
             
         text = (
-            f"📦 **Bulk Shipment Request**\n"
+            f"📦 **Permintaan Pengiriman Massal**\n"
             f"━━━━━━━━━━━━━━━\n"
             f"Terdapat `{len(rts)}` pesanan siap kirim.\n"
             f"Konfirmasi untuk memproses semuanya secara otomatis?"
