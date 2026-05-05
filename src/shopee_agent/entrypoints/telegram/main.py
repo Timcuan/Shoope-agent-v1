@@ -779,12 +779,7 @@ async def chat_cmd(message: Message) -> None:
             parse_mode="Markdown"
         )
         return
-            f"🎯 *Intent:* `{classification.intent.upper()}`\n"
-            f"⚖️ *Risk:* {risk_emoji} `{classification.risk_tier.upper()}`\n"
-            f"⚡ *Action:* {action_emoji}\n\n"
-            f"💬 *Proposed Draft:* \n_{decision.draft_reply}_"
-        )
-        await message.answer(response, parse_mode="Markdown")
+
 
 
 @dispatcher.message(Command("ask"))
@@ -858,7 +853,7 @@ async def returns_cmd(message: Message) -> None:
                     f"{risk_emoji} *{r.return_sn}* - Rp {r.amount:,.0f}\n"
                     f"Reason: `{r.reason}`\n"
                     f"Rec: `{record.agent_recommendation.upper() if record.agent_recommendation else 'NONE'}`\n"
-                    f"/find\_{r.return_sn}\n\n"
+                    f"/find_{r.return_sn}\n\n"
                 )
         
         if not found:
