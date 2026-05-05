@@ -127,11 +127,32 @@ Sistem bekerja dengan prinsip **Human-In-The-Loop (HITL)** untuk menjamin keaman
 
 ---
 
-## 📂 Struktur Proyek
--   `src/shopee_agent/app/`: Logika inti agen (Chat, Analytics, Logistics).
--   `src/shopee_agent/providers/`: Integrasi Shopee API v2 & Gemini 2.5 Flash.
--   `src/shopee_agent/persistence/`: Manajemen database SQLite (WAL Mode).
--   `src/shopee_agent/entrypoints/`: Handler Telegram Bot & REST API.
+## 📂 Struktur Proyek (Architecture Overview)
+
+Sistem ini mengikuti arsitektur modular yang memisahkan logika domain dari infrastruktur:
+
+```text
+src/shopee_agent/
+├── 🧠 app/                # Core Business Logic (Autonomous Agents)
+│   ├── order_agent.py     # Monitoring & Pemantauan Pesanan
+│   ├── chat_agent.py      # AI Chat Analysis & Draf Balasan
+│   ├── finance_agent.py   # Rekonsiliasi Keuangan & Margin
+│   ├── dispute_agent.py   # Pertahanan Sengketa Otomatis
+│   └── knowledge_agent.py # Manajemen Knowledge Base Produk
+├── 🔌 providers/          # Integrasi Layanan Eksternal
+│   ├── shopee/            # Shopee API v2 Gateway & Auth
+│   ├── llm/               # Gemini 2.5 Flash & OpenRouter Factory
+│   └── notifications/     # Telegram & PrintNode Service
+├── 🏛️ persistence/        # Data Layer (Resilience)
+│   ├── models.py          # Definisi Tabel (SQLAlchemy)
+│   └── repositories.py    # Logika Akses Data (Repo Pattern)
+├── 🎮 entrypoints/        # User Interface Layer
+│   ├── telegram/          # Handler Utama Bot Telegram
+│   ├── api/               # REST Endpoints untuk Webhook Shopee
+│   └── worker/            # Background Tasks & Task Orchestrator
+└── 📄 contracts/          # Data Structures (Pydantic Models)
+```
+
 
 
 ---
