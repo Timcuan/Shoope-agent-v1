@@ -99,17 +99,40 @@ Kami merancang sistem ini agar dapat dijalankan dalam hitungan menit tanpa konfi
 
 ## 📱 Panduan Perintah Telegram (User Guide)
 
-Gunakan perintah-perintah berikut untuk mengontrol asisten Anda:
+Gunakan perintah-perintah berikut untuk mengontrol asisten pintar Anda:
 
-| Perintah | Fungsi |
-| :--- | :--- |
-| `/start` | Memulai sesi dan menampilkan menu utama interaktif. |
-| `/inbox` | Melihat tugas mendesak hari ini (Pesanan baru, Komplain, Stok rendah). |
-| `/dashboard` | Menampilkan ringkasan performa toko (Omzet & Pertumbuhan). |
-| `/rekap` | Mengunduh laporan keuangan bulanan dalam format Excel/GSheets. |
-| `/chat` | Menganalisis pesan pembeli dan membuat draf balasan cerdas. |
-| `/diagnose` | Pengecekan mandiri kesehatan sistem (DB, LLM, API Shopee). |
-| `/sync` | Memicu sinkronisasi manual data toko di latar belakang. |
+| Kategori | Perintah | Fungsi |
+| :--- | :--- | :--- |
+| **Utama** | `/start` | Memulai sesi dan menampilkan menu utama interaktif. |
+| **Tugas** | `/inbox` | Melihat semua tugas mendesak (Pesanan, Komplain, Stok). |
+| **Tugas** | `/agenda` | Ringkasan tugas dengan SLA paling mendesak hari ini. |
+| **Analisis** | `/dashboard` | Ringkasan performa toko (Omzet & Pertumbuhan). |
+| **Keuangan** | `/rekap` | Susun laporan audit bulanan (Excel/GSheets). |
+| **AI** | `/chat` | Analisis pesan pembeli & draf balasan cerdas. |
+| **Sistem** | `/diagnose` | Pengecekan kesehatan sistem & konektivitas API. |
+| **Sistem** | `/sync` | Sinkronisasi manual data toko di latar belakang. |
+
+---
+
+## 🔄 Alur Kerja Otomasi (Workflow)
+
+Sistem bekerja dengan prinsip **Human-In-The-Loop (HITL)** untuk menjamin keamanan dan akurasi:
+
+1.  **🔍 Deteksi**: Bot memantau pesanan dan chat secara real-time setiap 3 menit.
+2.  **🧠 Klasifikasi**: AI Gemini menganalisis tingkat risiko (Rendah, Sedang, Tinggi).
+3.  **⚡ Aksi**: 
+    -   *Sedang*: Dibuatkan draf balasan ➡️ Masuk ke `/inbox` untuk disetujui operator.
+    -   *Tinggi*: Peringatan P0 dikirim ke admin ➡️ Memerlukan intervensi manusia segera.
+4.  **🎓 Learning**: Jika AI ragu, gunakan tombol **"Ajarkan AI"** untuk memperbarui basis pengetahuan secara instan.
+
+---
+
+## 📂 Struktur Proyek
+-   `src/shopee_agent/app/`: Logika inti agen (Chat, Analytics, Logistics).
+-   `src/shopee_agent/providers/`: Integrasi Shopee API v2 & Gemini 2.5 Flash.
+-   `src/shopee_agent/persistence/`: Manajemen database SQLite (WAL Mode).
+-   `src/shopee_agent/entrypoints/`: Handler Telegram Bot & REST API.
+
 
 ---
 
