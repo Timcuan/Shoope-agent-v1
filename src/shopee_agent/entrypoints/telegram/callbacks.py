@@ -16,18 +16,17 @@ from shopee_agent.app.logistics_agent import LogisticsAgent, ShipmentResult
 def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) -> None:
     @dp.callback_query(F.data == "view_inbox")
     async def view_inbox_callback(callback: CallbackQuery) -> None:
-        # In a real app we'd trigger the inbox command logic
-        # For simplicity, we just send a notification or link
         await callback.answer()
-        await callback.message.answer("📥 Checking your exceptions...")
-        # Since we can't easily call the main.py inbox function, we replicate a bit or suggest /inbox
-        await callback.message.answer("Please use the 📥 Inbox button or type /inbox")
+        from aiogram.enums import ChatAction
+        await callback.bot.send_chat_action(chat_id=callback.message.chat.id, action=ChatAction.TYPING)
+        await callback.message.answer("Silakan gunakan tombol 📥 Tugas Hari Ini di menu ya Kak!")
 
     @dp.callback_query(F.data == "view_dashboard")
     async def view_dashboard_callback(callback: CallbackQuery) -> None:
         await callback.answer()
-        await callback.message.answer("📊 Generating your dashboard...")
-        await callback.message.answer("Please use the 📊 Dashboard button or type /dashboard")
+        from aiogram.enums import ChatAction
+        await callback.bot.send_chat_action(chat_id=callback.message.chat.id, action=ChatAction.TYPING)
+        await callback.message.answer("Silakan gunakan tombol 📈 Laporan Penjualan di menu ya Kak!")
 
     @dp.callback_query(F.data.startswith("chat_draft:"))
     async def handle_chat_draft(callback: CallbackQuery) -> None:
@@ -35,20 +34,22 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
             parts = callback.data.split(":")
             shop_id, chat_id = parts[1], parts[2]
             
-            await callback.answer("🤖 AI is thinking...")
+            await callback.answer("🤖 Sebentar Kak, AI lagi mikir...")
+            from aiogram.enums import ChatAction
+            await callback.bot.send_chat_action(chat_id=callback.message.chat.id, action=ChatAction.TYPING)
             
             # Use real ChatAgent but for now simulate LLM result
             draft_text = "Halo kak! Pesanan kakak sedang kami siapkan dan akan segera diserahkan ke kurir hari ini ya. Mohon ditunggu! 😊"
             
             await callback.message.answer(
-                f"📝 **AI Suggestion for `{chat_id}`:**\n\n"
+                f"📝 **Draf dari AI untuk pembeli `{chat_id}`:**\n\n"
                 f"\"{draft_text}\"\n\n"
-                f"Confirm to send?",
+                f"Kirim pesan ini?",
                 reply_markup=get_chat_keyboard(chat_id, shop_id),
                 parse_mode="Markdown"
             )
         except Exception as e:
-            await callback.answer(f"⚠️ Draft failed: {str(e)}", show_alert=True)
+            await callback.answer(f"🙏 Waduh, AI-nya lagi pusing. Coba lagi ya Kak!", show_alert=True)
 
     @dp.callback_query(F.data.startswith("chat_quick_ok:"))
     async def handle_chat_ok(callback: CallbackQuery) -> None:
@@ -65,7 +66,9 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
             parts = callback.data.split(":")
             shop_id, order_sn = parts[1], parts[2]
             
-            await callback.answer(f"📦 Processing {order_sn}...")
+            await callback.answer(f"📦 Menyiapkan pesanan {order_sn}...")
+            from aiogram.enums import ChatAction
+            await callback.bot.send_chat_action(chat_id=callback.message.chat.id, action=ChatAction.TYPING)
             
             # Use ephemeral session for this action
             with SessionLocal() as session:
@@ -76,12 +79,12 @@ def register_callbacks(dp: Dispatcher, supervisor: OperationsSupervisorAgent) ->
                 res = await agent.arrange_shipment(shop_id, order_sn)
                 
             await callback.message.answer(
-                f"✅ Shipment arranged for `{order_sn}`!\n"
-                f"Status: `PROCESSED`", 
+                f"✅ Mantap! Pengiriman untuk `{order_sn}` sudah diatur.\n"
+                f"Status: `SIAP DIKIRIM`", 
                 parse_mode="Markdown"
             )
         except Exception as e:
-            await callback.answer(f"⚠️ Error: {str(e)}", show_alert=True)
+            await callback.answer(f"🙏 Maaf Kak, gagal atur pengiriman. Shopee lagi sibuk nih.", show_alert=True)
 
     @dp.callback_query(F.data.startswith("confirm_ship:"))
     async def handle_confirm_ship(callback: CallbackQuery) -> None:

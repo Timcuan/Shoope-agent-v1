@@ -208,26 +208,21 @@ async def backup_cmd(message: Message) -> None:
 async def help_cmd(message: Message) -> None:
     """Show premium help menu."""
     help_text = (
-        "💎 **Shopee Agent Premium Control**\n"
+        "💎 **Bantuan Asisten**\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📦 **OPERASIONAL**\n"
-        "• `/sync` - Sinkronisasi Toko (Real-time)\n"
-        "• `/agenda` - Lihat tugas hari ini\n"
-        "• `/inbox` - Pesanan & Notifikasi Baru\n"
-        "• `/stock` - Cek kesehatan stok (Prediktif)\n\n"
-        "📊 **REPORTING & ANALYTICS**\n"
-        "• `/dashboard` - Dashboard KPI & Performa\n"
-        "• `/rekap` [bln] - Unduh Audit Workbook (Excel)\n"
-        "• `/briefing` - Laporan Ringkas 24 Jam\n\n"
-        "💬 **CUSTOMER & KNOWLEDGE**\n"
-        "• `/chat` - Kelola percakapan pembeli\n"
-        "• `/ask` [tanya] - Tanya ke AI Assistant\n\n"
-        "🛡️ **SYSTEM & AUDIT**\n"
-        "• `/audit` - Lihat aktivitas sistem\n"
-        "• `/health` - Status server & database\n"
-        "• `/diagnose` - Cek keamanan & koneksi\n"
+        "📦 **Toko & Pesanan**\n"
+        "• `/sync` - Update data toko sekarang\n"
+        "• `/inbox` - Cek pesanan/tugas tertunda\n"
+        "• `/stock` - Pantau barang mau habis\n\n"
+        "📊 **Keuangan & Laporan**\n"
+        "• `/dashboard` - Laporan ringkas hari ini\n"
+        "• `/rekap` - Download excel bulanan\n\n"
+        "💬 **Pembeli**\n"
+        "• `/chat` - Balas pesan masuk\n\n"
+        "🛡️ **Sistem**\n"
+        "• `/health` - Cek koneksi ke Shopee\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 *Tip:* Gunakan menu tombol di bawah untuk navigasi cepat."
+        "💡 *Tip:* Paling gampang pakai tombol menu di bawah aja Kak."
     )
     await message.answer(help_text, reply_markup=get_main_menu_keyboard(), parse_mode="Markdown")
 
@@ -235,14 +230,13 @@ async def help_cmd(message: Message) -> None:
 @dispatcher.message(Command("start"))
 async def start_cmd(message: Message) -> None:
     welcome_text = (
-        "🚀 **Selamat Datang di Shopee Agent v1.0**\n"
-        "━━━━━━━━━━━━━━━\n"
-        "Pusat kendali operasional multi-toko Anda telah siap.\n\n"
-        "💡 **Panduan Cepat:**\n"
-        "• Gunakan tombol menu di bawah untuk akses cepat\n"
-        "• `/sync` untuk memperbarui semua data toko\n"
-        "• `/link` untuk menghubungkan toko baru\n\n"
-        "Silakan pilih menu di bawah untuk memulai."
+        "Halo Kak! 👋 Saya **Shopee Elite Agent**.\n"
+        "Saya siap bantu pantau toko, balas chat, dan urus operasional 24/7.\n\n"
+        "💡 **Coba klik tombol di bawah ini ya:**\n"
+        "• 📥 **Tugas Hari Ini**: Cek pesanan atau masalah yang butuh perhatian Kakak.\n"
+        "• 📈 **Laporan Penjualan**: Lihat profit & performa toko.\n"
+        "• 📦 **Cek Stok**: Pantau barang yang hampir habis.\n\n"
+        "Kalau butuh bantuan lain, ketik /help ya Kak!"
     )
     await message.answer(
         welcome_text, 
@@ -1397,6 +1391,21 @@ async def backup_cmd(message: Message) -> None:
         await message.answer("✅ **Backup berhasil dikirim.**")
     else:
         await message.answer("❌ **Gagal melakukan backup.**")
+
+
+@dispatcher.message()
+async def fallback_handler(message: Message) -> None:
+    """Handle generic non-command messages to prevent 'hanging' feeling."""
+    # Ignore commands that might have been typed wrong
+    if message.text and message.text.startswith("/"):
+        await message.answer("🙏 Waduh, fitur itu belum ada Kak. Coba ketik /help ya.")
+        return
+        
+    await message.answer(
+        "Halo Kak! 👋 Ada yang bisa dibantu?\n"
+        "Biar gampang, Kakak bisa langsung tekan tombol menu di bawah ini ya. 👇",
+        reply_markup=get_main_menu_keyboard()
+    )
 
 
 async def background_sync_task(bot: Bot) -> None:
